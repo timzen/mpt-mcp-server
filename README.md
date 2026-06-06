@@ -162,15 +162,16 @@ mpt-mcp-server/
 │   │   ├── report_complete.mjs
 │   │   ├── send_message.mjs
 │   │   └── get_next_task.mjs
-│   ├── runner/
-│   │   ├── runner.mjs        # Claude Code runner — poll/execute/report
-│   │   ├── config.mjs        # Configuration from env vars
-│   │   ├── poll.mjs          # Polls daemon for next task
-│   │   ├── execute.mjs       # Launches claude CLI with MCP config
-│   │   ├── report.mjs        # Reports results back to daemon
-│   │   └── logger.mjs        # Structured JSON logger
-│   └── runners/
-│       └── codex-runner.sh   # Codex runner — shell-based poll/execute/report
+│   ├── runners/
+│   │   ├── claude/
+│   │   │   ├── runner.mjs    # Claude Code runner — poll/execute/report
+│   │   │   ├── config.mjs    # Configuration from env vars
+│   │   │   ├── poll.mjs      # Polls daemon for next task
+│   │   │   ├── execute.mjs   # Launches claude CLI with MCP config
+│   │   │   ├── report.mjs    # Reports results back to daemon
+│   │   │   └── logger.mjs    # Structured JSON logger
+│   │   └── codex/
+│   │       └── codex-runner.sh  # Codex runner — shell-based poll/execute/report
 └── tests/
     ├── tools.test.mjs        # MCP tool integration tests
     ├── runner.test.mjs       # Claude runner component tests

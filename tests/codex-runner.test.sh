@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNNER="${SCRIPT_DIR}/../src/runners/codex-runner.sh"
+RUNNER="${SCRIPT_DIR}/../src/runners/codex/codex-runner.sh"
 PASS=0
 FAIL=0
 

@@ -11,13 +11,13 @@ src/index.mjs              → Entry point. Creates store, registry, MCP server.
 src/store.mjs              → In-memory data store with collections for memories, attachments, messages, tasks, completions.
 src/tools/registry.mjs     → Aggregates all tools, provides listTools() and callTool() interface.
 src/tools/*.mjs            → Individual tool modules. Each exports a factory function that takes the store and returns {definition, handler}.
-src/runner/runner.mjs      → Main loop: poll → execute → report. Handles SIGINT/SIGTERM gracefully.
-src/runner/config.mjs      → Loads configuration from environment variables.
-src/runner/poll.mjs        → GET /api/tasks/next from daemon. Returns task or null.
-src/runner/execute.mjs     → Builds prompt, writes temp MCP config, spawns claude --print, captures output.
-src/runner/report.mjs      → POST /api/tasks/:id/complete to daemon with retries.
-src/runner/logger.mjs      → Structured JSON logger to stderr.
-src/runners/codex-runner.sh → Shell-based runner for Codex. Polls daemon, writes TASK.md + AGENTS.md, launches codex --auto-edit, reports result. Fire-and-forget.
+src/runners/claude/runner.mjs  → Main loop: poll → execute → report. Handles SIGINT/SIGTERM gracefully.
+src/runners/claude/config.mjs  → Loads configuration from environment variables.
+src/runners/claude/poll.mjs    → GET /api/tasks/next from daemon. Returns task or null.
+src/runners/claude/execute.mjs → Builds prompt, writes temp MCP config, spawns claude --print, captures output.
+src/runners/claude/report.mjs  → POST /api/tasks/:id/complete to daemon with retries.
+src/runners/claude/logger.mjs  → Structured JSON logger to stderr.
+src/runners/codex/codex-runner.sh → Shell-based runner for Codex. Polls daemon, writes TASK.md + AGENTS.md, launches codex --auto-edit, reports result. Fire-and-forget.
 src/config/harnesses.mjs   → Default harness definitions: pi, claude-code, codex. Each defines command template, args, capabilities, env.
 src/config/loader.mjs      → Loads mpt.config.json, merges with defaults. Exports loadMptConfig(), getHarness(), listHarnesses().
 src/config/index.mjs       → Public API re-exports for the config module.

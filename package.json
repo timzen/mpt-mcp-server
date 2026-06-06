@@ -6,13 +6,13 @@
   "main": "src/index.mjs",
   "bin": {
     "mpt-mcp-server": "src/index.mjs",
-    "mpt-runner": "src/runner/runner.mjs",
+    "mpt-runner": "src/runners/claude/runner.mjs",
     "mpt-spawn": "src/cli/spawn.mjs"
   },
   "scripts": {
     "start": "node src/index.mjs",
-    "runner": "node src/runner/runner.mjs",
-    "runner:codex": "bash src/runners/codex-runner.sh",
+    "runner": "node src/runners/claude/runner.mjs",
+    "runner:codex": "bash src/runners/codex/codex-runner.sh",
     "test": "node --test tests/*.test.mjs && bash tests/codex-runner.test.sh"
   },
   "keywords": ["mcp", "claude", "cursor", "kiro", "team-tools"],

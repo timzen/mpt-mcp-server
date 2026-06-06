@@ -395,7 +395,7 @@ describe('Integration: Task queue behavior', () => {
 
 describe('Integration: End-to-end with runner poll module', () => {
   test('pollForTask works against mock daemon', async () => {
-    const { pollForTask } = await import('../src/runner/poll.mjs');
+    const { pollForTask } = await import('../src/runners/claude/poll.mjs');
 
     // Create a task
     await fetch(`${daemon.url}/api/stories`, {
@@ -417,7 +417,7 @@ describe('Integration: End-to-end with runner poll module', () => {
   });
 
   test('reportResult works against mock daemon', async () => {
-    const { reportResult } = await import('../src/runner/report.mjs');
+    const { reportResult } = await import('../src/runners/claude/report.mjs');
 
     // Create a task first
     await fetch(`${daemon.url}/api/stories`, {

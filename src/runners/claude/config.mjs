@@ -13,7 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * Load runner configuration from environment variables.
  */
 export function loadConfig() {
-  const mcpServerDefault = resolve(__dirname, '..', 'index.mjs');
+  const mcpServerDefault = resolve(__dirname, '..', '..', 'index.mjs');
 
   return {
     daemonUrl: process.env.MPT_DAEMON_URL || 'http://localhost:3100',
