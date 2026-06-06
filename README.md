@@ -48,7 +48,9 @@ node src/runner/runner.mjs
 | `MPT_POLL_INTERVAL` | `5` | Seconds between polls when idle |
 | `MPT_WORK_DIR` | Current directory | Working directory for claude sessions |
 | `MPT_MCP_SERVER` | Auto-detected | Path to mpt-mcp-server entry point |
-| `MPT_CLAUDE_BIN` | `claude` | Path to claude CLI binary |
+| `MPT_CLAUDE_BIN` | `claude` | Path to claude CLI binary (claude runner) |
+| `MPT_CODEX_BIN` | `codex` | Path to codex CLI binary (codex runner) |
+| `MPT_AGENTS_MD` | `./AGENTS.md` | Path to AGENTS.md for task context (codex runner) |
 | `MPT_MAX_RETRIES` | `3` | Max retries for reporting results |
 | `MPT_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 
@@ -107,16 +109,19 @@ mpt-mcp-server/
 │   │   ├── report_complete.mjs
 │   │   ├── send_message.mjs
 │   │   └── get_next_task.mjs
-│   └── runner/
-│       ├── runner.mjs        # Main loop — poll/execute/report
-│       ├── config.mjs        # Configuration from env vars
-│       ├── poll.mjs          # Polls daemon for next task
-│       ├── execute.mjs       # Launches claude CLI with MCP config
-│       ├── report.mjs        # Reports results back to daemon
-│       └── logger.mjs        # Structured JSON logger
+│   ├── runner/
+│   │   ├── runner.mjs        # Claude Code runner — poll/execute/report
+│   │   ├── config.mjs        # Configuration from env vars
+│   │   ├── poll.mjs          # Polls daemon for next task
+│   │   ├── execute.mjs       # Launches claude CLI with MCP config
+│   │   ├── report.mjs        # Reports results back to daemon
+│   │   └── logger.mjs        # Structured JSON logger
+│   └── runners/
+│       └── codex-runner.sh   # Codex runner — shell-based poll/execute/report
 └── tests/
     ├── tools.test.mjs        # MCP tool integration tests
-    └── runner.test.mjs       # Task runner component tests
+    ├── runner.test.mjs       # Claude runner component tests
+    └── codex-runner.test.sh  # Codex runner tests
 ```
 
 ## Testing

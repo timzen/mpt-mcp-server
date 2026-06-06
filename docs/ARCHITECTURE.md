@@ -17,6 +17,7 @@ src/runner/poll.mjs        → GET /api/tasks/next from daemon. Returns task or 
 src/runner/execute.mjs     → Builds prompt, writes temp MCP config, spawns claude --print, captures output.
 src/runner/report.mjs      → POST /api/tasks/:id/complete to daemon with retries.
 src/runner/logger.mjs      → Structured JSON logger to stderr.
+src/runners/codex-runner.sh → Shell-based runner for Codex. Polls daemon, writes TASK.md + AGENTS.md, launches codex --auto-edit, reports result. Fire-and-forget.
 ```
 
 ## Data Flow
@@ -58,6 +59,30 @@ Client
   /api/tasks/:id/        pointing to
     complete              mpt-mcp-server)
 ```
+
+### Codex Runner (shell-based)
+
+```
+┌─────────────────────────────────────────────────┐
+│ codex-runner.sh (persistent loop)               │
+│                                                 │
+│  ┌──────────┐   ┌────────────┐   ┌──────────┐  │
+│  │ poll     │──▶│ write ctx  │──▶│ codex    │  │
+│  │ curl GET │   │ TASK.md +  │   │--auto-edit│  │
+│  │ daemon   │   │ AGENTS.md  │   │ (fire&   │  │
+│  └──────────┘   └────────────┘   │  forget) │  │
+│       ▲                          └─────┬────┘  │
+│       │         ┌────────────┐         │       │
+│       └─────────│ report     │◀────────┘       │
+│                 │ curl POST  │                 │
+│                 │ daemon     │                 │
+│                 └────────────┘                 │
+└─────────────────────────────────────────────────┘
+```
+
+Key difference from the Claude runner: Codex has no MCP support, so context
+is provided via files (TASK.md, AGENTS.md) written to a temp work directory.
+No mid-task communication — purely fire-and-forget.
 
 ## Design Decisions
 
