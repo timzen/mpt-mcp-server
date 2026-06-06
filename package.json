@@ -1,0 +1,23 @@
+{
+  "name": "mpt-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server exposing team collaboration tools: memory, attachments, messaging, and task management",
+  "type": "module",
+  "main": "src/index.mjs",
+  "bin": {
+    "mpt-mcp-server": "src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "keywords": ["mcp", "claude", "cursor", "kiro", "team-tools"],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
