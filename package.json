@@ -6,7 +6,8 @@
   "main": "src/index.mjs",
   "bin": {
     "mpt-mcp-server": "src/index.mjs",
-    "mpt-runner": "src/runner/runner.mjs"
+    "mpt-runner": "src/runner/runner.mjs",
+    "mpt-spawn": "src/cli/spawn.mjs"
   },
   "scripts": {
     "start": "node src/index.mjs",

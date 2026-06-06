@@ -18,6 +18,10 @@ src/runner/execute.mjs     → Builds prompt, writes temp MCP config, spawns cla
 src/runner/report.mjs      → POST /api/tasks/:id/complete to daemon with retries.
 src/runner/logger.mjs      → Structured JSON logger to stderr.
 src/runners/codex-runner.sh → Shell-based runner for Codex. Polls daemon, writes TASK.md + AGENTS.md, launches codex --auto-edit, reports result. Fire-and-forget.
+src/config/harnesses.mjs   → Default harness definitions: pi, claude-code, codex. Each defines command template, args, capabilities, env.
+src/config/loader.mjs      → Loads mpt.config.json, merges with defaults. Exports loadMptConfig(), getHarness(), listHarnesses().
+src/config/index.mjs       → Public API re-exports for the config module.
+src/cli/spawn.mjs          → CLI command: `mpt spawn --harness=X --prompt=Y`. Resolves templates, generates MCP config, spawns harness.
 ```
 
 ## Data Flow
@@ -93,6 +97,22 @@ No mid-task communication — purely fire-and-forget.
 - **Runner as separate process**: The runner is a standalone loop that orchestrates claude CLI invocations. It doesn't embed claude — it spawns it per-task with `--print` mode for clean output capture.
 - **Temp MCP config per session**: Each claude invocation gets a fresh temp MCP config file, then it's cleaned up. No persistent config pollution.
 - **Daemon API contract**: The runner assumes a REST daemon at `MPT_DAEMON_URL` with `GET /api/tasks/next?assignee=X` and `POST /api/tasks/:id/complete`. This is a minimal contract that any daemon can implement.
+- **Harness configuration**: Each harness (pi, claude-code, codex) is defined as a command template with capabilities metadata. Config can be extended via `mpt.config.json` for custom harnesses or overrides.
+- **Template-based spawn**: The `mpt spawn` command resolves `{{variable}}` placeholders in harness args, making harness definitions declarative and portable.
+
+## Harness System
+
+Each harness definition includes:
+- `command` — Binary to execute
+- `args` — Argument template array with `{{variable}}` placeholders
+- `capabilities` — Feature flags (mcp, midTaskComm, fileEdit, shell, streaming)
+- `env` — Additional environment variables
+- `workDir` — Working directory template
+
+Config merge strategy:
+1. Load `DEFAULT_HARNESSES` (built-in pi, claude-code, codex)
+2. If `mpt.config.json` exists, merge its `harnesses` section (overrides by name, new entries added)
+3. Capabilities are merged field-by-field (so you can override just `mcp: false`)
 
 ## API (MCP Tools)
 

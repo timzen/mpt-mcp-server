@@ -54,6 +54,53 @@ node src/runner/runner.mjs
 | `MPT_MAX_RETRIES` | `3` | Max retries for reporting results |
 | `MPT_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 
+### Spawn an Agent (`mpt spawn`)
+
+Launch any configured harness with a prompt:
+
+```bash
+# Use default harness (claude-code)
+node src/cli/spawn.mjs --prompt="Fix the bug in main.js"
+
+# Specify harness
+node src/cli/spawn.mjs --harness=pi --prompt="Refactor the auth module"
+node src/cli/spawn.mjs --harness=codex --prompt="Add tests for utils"
+
+# List available harnesses
+node src/cli/spawn.mjs --list
+```
+
+### Project Config (`mpt.config.json`)
+
+Optional config file in the project root for customizing harnesses:
+
+```json
+{
+  "daemonUrl": "http://localhost:3100",
+  "defaults": {
+    "harness": "claude-code",
+    "pollInterval": 5
+  },
+  "harnesses": {
+    "claude-code": {
+      "command": "/custom/path/to/claude",
+      "env": { "CUSTOM_VAR": "value" }
+    },
+    "my-custom-agent": {
+      "name": "my-custom-agent",
+      "description": "My custom agent",
+      "command": "my-agent",
+      "args": ["--run", "{{prompt}}"],
+      "capabilities": { "mcp": false, "midTaskComm": false, "fileEdit": true, "shell": true, "streaming": false },
+      "env": {},
+      "workDir": "{{workDir}}"
+    }
+  }
+}
+```
+
+Template variables: `{{workDir}}`, `{{mcpConfigPath}}`, `{{mcpServerPath}}`, `{{prompt}}`, `{{taskId}}`, `{{agentId}}`, `{{agentsmd}}`
+
 ### Configure in Claude Code
 
 Add to your MCP config (`~/.config/claude/mcp.json` or project `.mcp.json`):
@@ -101,6 +148,12 @@ mpt-mcp-server/
 ├── src/
 │   ├── index.mjs             # Entry point — starts stdio MCP server
 │   ├── store.mjs             # In-memory data store
+│   ├── config/
+│   │   ├── index.mjs         # Config public API
+│   │   ├── harnesses.mjs     # Default harness definitions (pi, claude-code, codex)
+│   │   └── loader.mjs        # Config file loader + merger
+│   ├── cli/
+│   │   └── spawn.mjs         # `mpt spawn --harness=X` command
 │   ├── tools/
 │   │   ├── registry.mjs      # Tool registry (list + dispatch)
 │   │   ├── save_memory.mjs   # save_memory tool
@@ -121,7 +174,9 @@ mpt-mcp-server/
 └── tests/
     ├── tools.test.mjs        # MCP tool integration tests
     ├── runner.test.mjs       # Claude runner component tests
-    └── codex-runner.test.sh  # Codex runner tests
+    ├── codex-runner.test.sh  # Codex runner tests
+    ├── config.test.mjs       # Harness config tests
+    └── spawn.test.mjs        # Spawn CLI tests
 ```
 
 ## Testing
