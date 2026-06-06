@@ -32,3 +32,21 @@ Each tool module exports a factory `(store) → {definition, handler}`. This pat
 - Makes dependencies explicit (just the store)
 - Keeps tools independently testable
 - Allows future tools to depend on additional services without changing the registry
+
+### Why a separate runner process?
+
+Claude Code doesn't have a built-in task loop. The runner provides the persistent loop that:
+- Polls a daemon for work (decoupled from any specific task queue)
+- Spawns claude in `--print` mode (non-interactive, clean output)
+- Reports results back with retries
+- Handles graceful shutdown via SIGINT/SIGTERM
+
+This separation means the MCP server and the runner can evolve independently. The MCP server is the "toolbox" available during execution; the runner is the "scheduler" that drives the loop.
+
+### Why `--print` mode?
+
+`--print` gives us a single-shot, non-interactive execution with capturable stdout. This is simpler and more reliable than trying to drive an interactive session, and it's what the claude CLI was designed for in automation contexts.
+
+### Why temp MCP config files?
+
+The runner writes a temp `mcp.json` per invocation and passes it via `--mcp-config`. This avoids polluting the user's global or project MCP config, and ensures each session gets a clean configuration.
