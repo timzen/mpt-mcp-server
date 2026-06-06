@@ -176,7 +176,11 @@ mpt-mcp-server/
     ├── runner.test.mjs       # Claude runner component tests
     ├── codex-runner.test.sh  # Codex runner tests
     ├── config.test.mjs       # Harness config tests
-    └── spawn.test.mjs        # Spawn CLI tests
+    ├── spawn.test.mjs        # Spawn CLI tests
+    ├── integration.test.mjs  # Multi-harness integration tests
+    └── helpers/
+        ├── mock-daemon.mjs   # Mock HTTP daemon for tests
+        └── mock-agents.mjs   # Simulated agent adapters
 ```
 
 ## Testing
