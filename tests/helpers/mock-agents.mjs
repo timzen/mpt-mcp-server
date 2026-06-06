@@ -94,6 +94,44 @@ export function createMockCodexAgent(config) {
 }
 
 /**
+ * Simulates a Kiro agent with MCP capabilities.
+ * Similar to Claude Code but uses kiro-cli's MCP integration.
+ */
+export function createMockKiroAgent(config) {
+  const store = createStore();
+  const registry = createToolRegistry(store);
+
+  return {
+    name: 'kiro-agent',
+    harness: 'kiro',
+    capabilities: { mcp: true, midTaskComm: true },
+
+    async executeTask(task) {
+      // Kiro uses MCP tools during execution
+      await registry.callTool('search_memory', { query: task.title });
+
+      await registry.callTool('save_memory', {
+        content: `Kiro working on: ${task.title}`,
+        category: 'progress',
+        tags: ['kiro', task.id],
+      });
+
+      const output = `Task "${task.title}" completed via Kiro CLI.`;
+
+      await registry.callTool('report_complete', {
+        taskId: task.id,
+        summary: output,
+      });
+
+      return { status: 'success', output, exitCode: 0 };
+    },
+
+    getRegistry() { return registry; },
+    getStore() { return store; },
+  };
+}
+
+/**
  * Simulates a Claude Code agent with MCP but no streaming.
  */
 export function createMockClaudeAgent(config) {

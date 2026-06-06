@@ -17,6 +17,12 @@ src/runners/claude/poll.mjs    → GET /api/tasks/next from daemon. Returns task
 src/runners/claude/execute.mjs → Builds prompt, writes temp MCP config, spawns claude --print, captures output.
 src/runners/claude/report.mjs  → POST /api/tasks/:id/complete to daemon with retries.
 src/runners/claude/logger.mjs  → Structured JSON logger to stderr.
+src/runners/kiro/runner.mjs    → Main loop for Kiro: poll → execute → report. Same pattern as Claude runner.
+src/runners/kiro/config.mjs    → Kiro-specific configuration (MPT_KIRO_BIN, agent defaults).
+src/runners/kiro/execute.mjs   → Registers MCP server with kiro-cli, spawns `kiro-cli chat --no-interactive --trust-all-tools`.
+src/runners/kiro/poll.mjs      → Re-exports shared poll logic from claude runner.
+src/runners/kiro/report.mjs    → Re-exports shared report logic from claude runner.
+src/runners/kiro/logger.mjs    → Re-exports shared logger from claude runner.
 src/runners/codex/codex-runner.sh → Shell-based runner for Codex. Polls daemon, writes TASK.md + AGENTS.md, launches codex --auto-edit, reports result. Fire-and-forget.
 src/config/harnesses.mjs   → Default harness definitions: pi, claude-code, codex. Each defines command template, args, capabilities, env.
 src/config/loader.mjs      → Loads mpt.config.json, merges with defaults. Exports loadMptConfig(), getHarness(), listHarnesses().

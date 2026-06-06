@@ -60,6 +60,27 @@ export const DEFAULT_HARNESSES = {
     workDir: '{{workDir}}',
   },
 
+  kiro: {
+    name: 'kiro',
+    description: 'Kiro CLI — supports MCP, non-interactive mode with trust-all-tools',
+    command: 'kiro-cli',
+    args: [
+      'chat',
+      '--no-interactive',
+      '--trust-all-tools',
+      '{{prompt}}',
+    ],
+    capabilities: {
+      mcp: true,
+      midTaskComm: true,
+      fileEdit: true,
+      shell: true,
+      streaming: false,
+    },
+    env: {},
+    workDir: '{{workDir}}',
+  },
+
   codex: {
     name: 'codex',
     description: 'OpenAI Codex CLI — auto-edit mode, file-based context, fire-and-forget',

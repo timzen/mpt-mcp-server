@@ -36,7 +36,17 @@ The task runner is a persistent loop that polls a daemon for tasks, executes the
 ```bash
 npm run runner
 # or
-node src/runner/runner.mjs
+node src/runners/claude/runner.mjs
+```
+
+### Start the Task Runner (Kiro)
+
+The Kiro runner uses `kiro-cli chat --no-interactive` with MCP support.
+
+```bash
+npm run runner:kiro
+# or
+node src/runners/kiro/runner.mjs
 ```
 
 #### Environment Variables
@@ -49,6 +59,7 @@ node src/runner/runner.mjs
 | `MPT_WORK_DIR` | Current directory | Working directory for claude sessions |
 | `MPT_MCP_SERVER` | Auto-detected | Path to mpt-mcp-server entry point |
 | `MPT_CLAUDE_BIN` | `claude` | Path to claude CLI binary (claude runner) |
+| `MPT_KIRO_BIN` | `kiro-cli` | Path to kiro-cli binary (kiro runner) |
 | `MPT_CODEX_BIN` | `codex` | Path to codex CLI binary (codex runner) |
 | `MPT_AGENTS_MD` | `./AGENTS.md` | Path to AGENTS.md for task context (codex runner) |
 | `MPT_MAX_RETRIES` | `3` | Max retries for reporting results |
@@ -170,6 +181,13 @@ mpt-mcp-server/
 │   │   │   ├── execute.mjs   # Launches claude CLI with MCP config
 │   │   │   ├── report.mjs    # Reports results back to daemon
 │   │   │   └── logger.mjs    # Structured JSON logger
+│   │   ├── kiro/
+│   │   │   ├── runner.mjs    # Kiro runner — poll/execute/report
+│   │   │   ├── config.mjs    # Kiro-specific config
+│   │   │   ├── execute.mjs   # Launches kiro-cli with MCP
+│   │   │   ├── poll.mjs      # Re-exports shared poll
+│   │   │   ├── report.mjs    # Re-exports shared report
+│   │   │   └── logger.mjs    # Re-exports shared logger
 │   │   └── codex/
 │   │       └── codex-runner.sh  # Codex runner — shell-based poll/execute/report
 └── tests/

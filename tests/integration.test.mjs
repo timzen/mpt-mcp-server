@@ -15,6 +15,7 @@ import {
   createMockPiAgent,
   createMockCodexAgent,
   createMockClaudeAgent,
+  createMockKiroAgent,
 } from './helpers/mock-agents.mjs';
 
 let daemon;
@@ -224,13 +225,44 @@ describe('Integration: Full task lifecycle with Claude Code agent', () => {
   });
 });
 
+describe('Integration: Full task lifecycle with Kiro agent (MCP)', () => {
+  test('Kiro agent polls, uses MCP tools, reports completion', async () => {
+    const kiroAgent = createMockKiroAgent({ agentId: 'kiro-agent-1' });
+
+    await fetch(`${daemon.url}/api/stories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Kiro story',
+        tasks: [{ title: 'Build dashboard widget', assignee: 'kiro-agent-1' }],
+      }),
+    });
+
+    const outcome = await agentCycle(kiroAgent, daemon.url, 'kiro-agent-1');
+
+    assert.ok(outcome);
+    assert.equal(outcome.result.status, 'success');
+    assert.ok(outcome.result.output.includes('Build dashboard widget'));
+
+    // Verify daemon received completion
+    assert.equal(daemon.state.completions.length, 1);
+    assert.equal(daemon.state.completions[0].status, 'success');
+
+    // Verify Kiro used MCP (local store)
+    const store = kiroAgent.getStore();
+    assert.ok(store._memories.length > 0, 'Kiro saved memory');
+    assert.ok(store._completions.length > 0, 'Kiro called report_complete');
+  });
+});
+
 describe('Integration: Multi-agent collaboration on a story', () => {
-  test('three agents complete all tasks in a story', async () => {
+  test('four agents complete all tasks in a story', async () => {
     const piAgent = createMockPiAgent({ agentId: 'pi-agent-1' });
     const claudeAgent = createMockClaudeAgent({ agentId: 'claude-agent-1' });
     const codexAgent = createMockCodexAgent({ agentId: 'codex-agent-1' });
+    const kiroAgent = createMockKiroAgent({ agentId: 'kiro-agent-1' });
 
-    // Create a story with 3 tasks for different agents
+    // Create a story with 4 tasks for different agents
     const storyRes = await fetch(`${daemon.url}/api/stories`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -240,33 +272,37 @@ describe('Integration: Multi-agent collaboration on a story', () => {
           { title: 'Design DB schema', assignee: 'pi-agent-1', description: 'Create tables' },
           { title: 'Build API routes', assignee: 'claude-agent-1', description: 'REST endpoints' },
           { title: 'Add unit tests', assignee: 'codex-agent-1', description: 'Test coverage' },
+          { title: 'Build UI components', assignee: 'kiro-agent-1', description: 'React widgets' },
         ],
       }),
     });
     const story = await storyRes.json();
-    assert.equal(story.tasks.length, 3);
+    assert.equal(story.tasks.length, 4);
 
-    // All three agents execute concurrently
-    const [piResult, claudeResult, codexResult] = await Promise.all([
+    // All four agents execute concurrently
+    const [piResult, claudeResult, codexResult, kiroResult] = await Promise.all([
       agentCycle(piAgent, daemon.url, 'pi-agent-1'),
       agentCycle(claudeAgent, daemon.url, 'claude-agent-1'),
       agentCycle(codexAgent, daemon.url, 'codex-agent-1'),
+      agentCycle(kiroAgent, daemon.url, 'kiro-agent-1'),
     ]);
 
     // All succeeded
     assert.equal(piResult.result.status, 'success');
     assert.equal(claudeResult.result.status, 'success');
     assert.equal(codexResult.result.status, 'success');
+    assert.equal(kiroResult.result.status, 'success');
 
     // All tasks completed in daemon
-    assert.equal(daemon.state.completions.length, 3);
+    assert.equal(daemon.state.completions.length, 4);
     const allComplete = daemon.state.tasks.every((t) => t.status === 'complete');
     assert.ok(allComplete, 'All tasks should be complete');
 
     // Each agent got the right task
-    assert.ok(piResult.task.title === 'Design DB schema');
-    assert.ok(claudeResult.task.title === 'Build API routes');
-    assert.ok(codexResult.task.title === 'Add unit tests');
+    assert.equal(piResult.task.title, 'Design DB schema');
+    assert.equal(claudeResult.task.title, 'Build API routes');
+    assert.equal(codexResult.task.title, 'Add unit tests');
+    assert.equal(kiroResult.task.title, 'Build UI components');
   });
 
   test('agents with different capabilities produce different artifacts', async () => {
