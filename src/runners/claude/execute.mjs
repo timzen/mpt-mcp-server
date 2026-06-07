@@ -1,32 +1,30 @@
 /**
- * execute.mjs — Executes a task by launching the claude CLI.
+ * execute.mjs — Legacy execute module (DEPRECATED).
  *
- * Builds the prompt from the task, generates an MCP config,
- * launches claude in --print mode (non-interactive), and captures output.
+ * Retained for backwards compatibility with existing tests.
+ * New code should use the Claude adapter (adapter.mjs) which is
+ * invoked by the shared runner loop.
  */
 
 import { spawn } from 'node:child_process';
 import { writeFile, unlink, mkdtemp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { log } from './logger.mjs';
+import { log } from '../shared/logger.mjs';
 
 /**
- * Execute a task using the claude CLI.
- * @param {object} task - Task from the daemon
+ * Execute a task phase using the claude CLI.
+ * @param {object} task - Task object (with _prompt field for pre-built prompt)
  * @param {object} config - Runner configuration
  * @returns {{status: string, output: string, exitCode: number}}
  */
 export async function executeTask(task, config) {
-  // Build MCP config for this session
-  const mcpConfig = buildMcpConfig(config);
-  const mcpConfigPath = await writeTempMcpConfig(mcpConfig);
+  const mcpConfigPath = await writeTempMcpConfig(config);
 
   try {
-    // Build the prompt from the task
-    const prompt = buildPrompt(task);
+    // Use pre-built prompt from workflow logic, or fall back to building one
+    const prompt = task._prompt || buildFallbackPrompt(task);
 
-    // Build claude CLI arguments
     const args = [
       '--print',
       '--output-format', 'text',
@@ -40,51 +38,11 @@ export async function executeTask(task, config) {
       promptLength: prompt.length,
     });
 
-    // Execute claude CLI
-    const result = await runClaude(config.claudeBinary, args, config.workDir);
-
+    const result = await runClaude(config.claudeBinary, args, config.workDir, config);
     return result;
   } finally {
-    // Clean up temp MCP config
     await unlink(mcpConfigPath).catch(() => {});
   }
-}
-
-/**
- * Build the task prompt that will be sent to claude.
- */
-function buildPrompt(task) {
-  const parts = [`## Task: ${task.title}`];
-
-  if (task.id) {
-    parts.push(`**Task ID: ${task.id}**`);
-  }
-
-  if (task.description) {
-    parts.push('', task.description);
-  }
-
-  if (task.context) {
-    parts.push('', '### Context', task.context);
-  }
-
-  if (task.acceptanceCriteria) {
-    parts.push('', '### Acceptance Criteria');
-    if (Array.isArray(task.acceptanceCriteria)) {
-      task.acceptanceCriteria.forEach((c) => parts.push(`- ${c}`));
-    } else {
-      parts.push(task.acceptanceCriteria);
-    }
-  }
-
-  parts.push(
-    '',
-    '---',
-    'When complete, use the `report_complete` MCP tool to report your results.',
-    `Pass taskId: "${task.id}" and a brief summary of what you accomplished.`
-  );
-
-  return parts.join('\n');
 }
 
 /**
@@ -93,29 +51,41 @@ function buildPrompt(task) {
 function buildSystemContext(task, config) {
   return [
     `You are agent "${config.agentId}" working on task "${task.id}".`,
-    'You have access to team tools via MCP: save_memory, search_memory, upload_attachment, report_complete, send_message, get_next_task.',
-    'When you finish the task, call report_complete with the taskId and a summary.',
+    'You have MCP tools: save_memory, search_memory, upload_attachment, post_comment, get_next_work, claim_task, transition_task, release_task.',
+    'Focus on completing the work described in the prompt. Provide a clear summary when done.',
   ].join(' ');
 }
 
 /**
- * Build MCP server configuration JSON.
+ * Fallback prompt builder (for backwards compat if _prompt is not set).
  */
-function buildMcpConfig(config) {
-  return {
+function buildFallbackPrompt(task) {
+  const parts = [`## Task: ${task.title}`];
+  if (task.id) parts.push(`**Task ID: ${task.id}**`);
+  if (task.description) parts.push('', task.description);
+  if (task.context) parts.push('', '### Context', task.context);
+  parts.push('', '---', 'When complete, provide a summary of what you accomplished.');
+  return parts.join('\n');
+}
+
+/**
+ * Write MCP config to a temp file.
+ * Includes env vars so the MCP server connects to the same daemon.
+ */
+async function writeTempMcpConfig(config) {
+  const mcpConfig = {
     mcpServers: {
       mpt: {
         command: 'node',
         args: [config.mcpServerPath],
+        env: {
+          MPT_DAEMON_URL: config.daemonUrl,
+          MPT_AGENT_ID: config.agentId,
+        },
       },
     },
   };
-}
 
-/**
- * Write MCP config to a temp file and return the path.
- */
-async function writeTempMcpConfig(mcpConfig) {
   const dir = await mkdtemp(join(tmpdir(), 'mpt-runner-'));
   const path = join(dir, 'mcp.json');
   await writeFile(path, JSON.stringify(mcpConfig, null, 2));
@@ -124,14 +94,17 @@ async function writeTempMcpConfig(mcpConfig) {
 
 /**
  * Spawn the claude CLI and capture output.
- * @returns {{status: string, output: string, exitCode: number}}
  */
-function runClaude(binary, args, cwd) {
+function runClaude(binary, args, cwd, config) {
   return new Promise((resolve) => {
     const proc = spawn(binary, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        MPT_DAEMON_URL: config.daemonUrl,
+        MPT_AGENT_ID: config.agentId,
+      },
     });
 
     const stdout = [];
@@ -140,7 +113,6 @@ function runClaude(binary, args, cwd) {
     proc.stdout.on('data', (chunk) => stdout.push(chunk));
     proc.stderr.on('data', (chunk) => stderr.push(chunk));
 
-    // Close stdin immediately (non-interactive)
     proc.stdin.end();
 
     proc.on('close', (code) => {
@@ -155,21 +127,13 @@ function runClaude(binary, args, cwd) {
         resolve({ status: 'success', output, exitCode: code });
       } else {
         log('warn', `Claude exited with code ${code}`);
-        resolve({
-          status: 'error',
-          output: output || errors,
-          exitCode: code,
-        });
+        resolve({ status: 'error', output: output || errors, exitCode: code });
       }
     });
 
     proc.on('error', (err) => {
       log('error', `Failed to spawn claude: ${err.message}`);
-      resolve({
-        status: 'error',
-        output: `Spawn error: ${err.message}`,
-        exitCode: -1,
-      });
+      resolve({ status: 'error', output: `Spawn error: ${err.message}`, exitCode: -1 });
     });
   });
 }

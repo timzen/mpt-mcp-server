@@ -1,11 +1,12 @@
 /**
- * poll.mjs — Polls the daemon for the next available task.
+ * poll.mjs — Legacy poll module (DEPRECATED).
  *
- * Makes a GET request to the daemon's task endpoint, filtered by agent ID.
- * Returns null if no tasks are available or the daemon is unreachable.
+ * Retained for backwards compatibility with existing tests.
+ * New code should use the shared runner loop which polls via
+ * daemon-client.mjs directly.
  */
 
-import { log } from './logger.mjs';
+import { log } from '../shared/logger.mjs';
 
 /**
  * Poll the daemon for the next task assigned to this agent.

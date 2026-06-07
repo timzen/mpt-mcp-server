@@ -1,7 +1,8 @@
 /**
- * logger.mjs — Structured logger for the Kiro runner.
+ * logger.mjs — Kiro runner logger (re-exports shared logger).
  *
- * Shared logic, identical to the Claude runner logger module.
+ * Retained for backwards compatibility. New code should import
+ * from '../shared/logger.mjs' directly.
  */
 
-export { log } from '../claude/logger.mjs';
+export { log } from '../shared/logger.mjs';

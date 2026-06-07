@@ -18,7 +18,7 @@ describe('config', () => {
     const { loadConfig } = await import('../src/runners/claude/config.mjs');
     const config = loadConfig();
 
-    assert.equal(config.daemonUrl, 'http://localhost:3100');
+    assert.equal(config.daemonUrl, 'http://localhost:7437');
     assert.equal(config.agentId, 'claude-agent-1');
     assert.equal(config.pollInterval, 5);
     assert.ok(config.workDir);

@@ -1,8 +1,10 @@
 /**
- * search_memory.mjs — Tool to search the team's shared memory.
+ * search_memory.mjs — Tool to search the team's shared memory via the daemon.
+ *
+ * Delegates to GET /api/assistant/notes/search on the daemon.
  */
 
-export function searchMemory(store) {
+export function searchMemory(daemonClient) {
   return {
     definition: {
       name: 'search_memory',
@@ -27,20 +29,28 @@ export function searchMemory(store) {
         required: ['query'],
       },
     },
-    handler(args) {
-      const results = store.searchMemory(
-        args.query,
-        args.category || null,
-        args.limit || 5
-      );
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ results, count: results.length }),
-          },
-        ],
-      };
+
+    async handler(args) {
+      try {
+        const response = await daemonClient.searchNotes(
+          args.query,
+          args.category || undefined,
+          args.limit || 5
+        );
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(response),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }],
+          isError: true,
+        };
+      }
     },
   };
 }

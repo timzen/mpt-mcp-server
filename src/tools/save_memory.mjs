@@ -1,8 +1,11 @@
 /**
- * save_memory.mjs — Tool to persist a memory entry for the team.
+ * save_memory.mjs — Tool to persist a memory note via the daemon.
+ *
+ * Delegates to POST /api/assistant/notes with the schema expected by
+ * the daemon: title, content, categories[].
  */
 
-export function saveMemory(store) {
+export function saveMemory(daemonClient) {
   return {
     definition: {
       name: 'save_memory',
@@ -11,38 +14,46 @@ export function saveMemory(store) {
       inputSchema: {
         type: 'object',
         properties: {
+          title: {
+            type: 'string',
+            description: 'Short title for the memory note',
+          },
           content: {
             type: 'string',
             description: 'The content to remember',
           },
-          category: {
-            type: 'string',
-            description:
-              'Category for the memory (e.g. "coding", "research", "doc-writing", "decision")',
-          },
-          tags: {
+          categories: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Optional tags for easier retrieval',
+            description:
+              'Categories for the memory (e.g. ["coding", "convention"])',
           },
         },
-        required: ['content'],
+        required: ['title', 'content'],
       },
     },
-    handler(args) {
-      const record = store.addMemory({
-        content: args.content,
-        category: args.category,
-        tags: args.tags,
-      });
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ saved: true, id: record.id, category: record.category }),
-          },
-        ],
-      };
+
+    async handler(args) {
+      try {
+        const response = await daemonClient.saveNote(
+          args.title,
+          args.content,
+          args.categories || ['general']
+        );
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ saved: true, ...response }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }],
+          isError: true,
+        };
+      }
     },
   };
 }

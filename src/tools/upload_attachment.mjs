@@ -1,16 +1,24 @@
 /**
- * upload_attachment.mjs — Tool to upload a file attachment to a task.
+ * upload_attachment.mjs — Tool to upload a file attachment to a task via the daemon.
+ *
+ * Delegates to POST /api/tasks/:taskId/attachments. taskId is required —
+ * no orphan attachments. Optionally posts a comment alongside the upload
+ * (matching pi-pizza-team behavior).
  */
 
-export function uploadAttachment(store) {
+export function uploadAttachment(daemonClient) {
   return {
     definition: {
       name: 'upload_attachment',
       description:
-        'Upload a file as an attachment, optionally associated with a task. Use for diffs, reports, or other artifacts.',
+        'Upload a file as an attachment to a task. Optionally posts a comment alongside. Use for diffs, reports, or other artifacts.',
       inputSchema: {
         type: 'object',
         properties: {
+          taskId: {
+            type: 'string',
+            description: 'Task ID to attach to (required)',
+          },
           filename: {
             type: 'string',
             description: 'Filename with extension (e.g. "changes.diff")',
@@ -19,37 +27,47 @@ export function uploadAttachment(store) {
             type: 'string',
             description: 'File content as text',
           },
-          taskId: {
-            type: 'string',
-            description: 'Task ID to attach to (optional)',
-          },
           message: {
             type: 'string',
-            description: 'Optional message to post alongside the attachment',
+            description: 'Optional comment to post alongside the attachment',
           },
         },
-        required: ['filename', 'content'],
+        required: ['taskId', 'filename', 'content'],
       },
     },
-    handler(args) {
-      const record = store.addAttachment({
-        filename: args.filename,
-        content: args.content,
-        taskId: args.taskId,
-        message: args.message,
-      });
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              uploaded: true,
-              id: record.id,
-              filename: record.filename,
-            }),
-          },
-        ],
-      };
+
+    async handler(args) {
+      try {
+        const response = await daemonClient.uploadAttachment(
+          args.taskId,
+          args.filename,
+          args.content
+        );
+
+        // Post a comment alongside if message provided
+        if (args.message) {
+          await daemonClient.postComment(args.taskId, args.message);
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                uploaded: true,
+                filename: args.filename,
+                taskId: args.taskId,
+                ...response,
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }],
+          isError: true,
+        };
+      }
     },
   };
 }

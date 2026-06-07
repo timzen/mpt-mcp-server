@@ -1,7 +1,9 @@
 /**
- * poll.mjs — Polls the daemon for the next available task.
+ * poll.mjs — Retained for backwards compatibility.
  *
- * Shared logic, identical to the Claude runner poll module.
+ * The Kiro runner now uses daemon-client.mjs directly for polling via
+ * the agent protocol (GET /api/agents/next-work). This re-export is
+ * kept in case external code references it.
  */
 
 export { pollForTask } from '../claude/poll.mjs';

@@ -1,10 +1,12 @@
 /**
- * report.mjs — Reports task results back to the daemon.
+ * report.mjs — Legacy report module (DEPRECATED).
  *
- * POSTs the execution result to the daemon's completion endpoint.
+ * Retained for backwards compatibility with existing tests.
+ * New code should use the shared runner loop which transitions
+ * tasks via daemon-client.mjs directly.
  */
 
-import { log } from './logger.mjs';
+import { log } from '../shared/logger.mjs';
 
 /**
  * Report a task result to the daemon.
