@@ -20,30 +20,6 @@ import { spawnWindow, isTmuxAvailable, listWindows, shellSafe } from '../tmux.mj
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RUNNERS_DIR = resolve(__dirname, '..', 'runners');
 
-// ─── Name generation ─────────────────────────────────────────────────
-
-const ADJECTIVES = [
-  'swift', 'bold', 'keen', 'calm', 'bright',
-  'deft', 'firm', 'sharp', 'brave', 'quick',
-  'sly', 'warm', 'cool', 'wild', 'fair',
-];
-
-const NOUNS = [
-  'ripley', 'kirk', 'spock', 'solo', 'neo',
-  'trinity', 'deckard', 'case', 'molly', 'picard',
-  'data', 'worf', 'uhura', 'sulu', 'riker',
-];
-
-function generateName(existingNames) {
-  for (let i = 0; i < 100; i++) {
-    const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
-    const noun = NOUNS[Math.floor(Math.random() * NOUNS.length)];
-    const name = `${adj}-${noun}`;
-    if (!existingNames.has(name)) return name;
-  }
-  return `agent-${Date.now()}`;
-}
-
 // ─── Runner command mapping ──────────────────────────────────────────
 
 /**
@@ -110,7 +86,7 @@ export function spawnAgent(daemonClient) {
       },
     },
 
-    handler(args) {
+    async handler(args) {
       // Validate tmux availability
       if (!isTmuxAvailable()) {
         return {
@@ -122,9 +98,21 @@ export function spawnAgent(daemonClient) {
       const harnessName = args.harness || 'claude-code';
       const workDir = resolve(args.cwd || process.cwd());
 
-      // Generate agent name
-      const existingWindows = new Set(listWindows(tmuxSession));
-      const agentName = args.name || generateName(existingWindows);
+      // Get agent name: use provided name, or ask daemon to generate one
+      let agentName = args.name;
+      let spawnRequestId = null;
+
+      if (!agentName) {
+        try {
+          const spawnRes = await daemonClient.createSpawnRequest({ cwd: workDir, storyId: args.storyId });
+          agentName = spawnRes.name;
+          spawnRequestId = spawnRes.id;
+        } catch {
+          // Fallback: generate from existing tmux windows if daemon is unreachable
+          const existingWindows = new Set(listWindows(tmuxSession));
+          agentName = `agent-${Date.now()}`;
+        }
+      }
 
       // Build the runner command
       const runnerCmd = getRunnerCommand(harnessName, {
@@ -155,6 +143,15 @@ export function spawnAgent(daemonClient) {
           content: [{ type: 'text', text: JSON.stringify({ error: `Failed to spawn tmux window: ${err.message}` }) }],
           isError: true,
         };
+      }
+
+      // Acknowledge the spawn request if we created one
+      if (spawnRequestId) {
+        try {
+          await daemonClient.ackSpawnRequest(spawnRequestId);
+        } catch {
+          // Non-fatal: spawn succeeded even if ack fails
+        }
       }
 
       return {

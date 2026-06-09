@@ -15,6 +15,8 @@ function createMockDaemonClient() {
     get hostId() { return 'test-host'; },
     async getStatus() { return { members: ['agent-1', 'agent-2'] }; },
     async dismissAgent() { return { dismissed: true }; },
+    async createSpawnRequest() { return { id: 'spawn-123', name: 'swift-ripley', hostId: 'test-host', status: 'pending', createdAt: new Date().toISOString() }; },
+    async ackSpawnRequest() { return { success: true }; },
   };
 }
 
@@ -70,8 +72,8 @@ describe('spawn_agent tool', () => {
     assert.ok(tool.definition.inputSchema.properties.harness);
   });
 
-  it('rejects unknown harness', () => {
-    const result = tool.handler({
+  it('rejects unknown harness', async () => {
+    const result = await tool.handler({
       harness: 'nonexistent-harness-xyz',
     });
     const data = JSON.parse(result.content[0].text);

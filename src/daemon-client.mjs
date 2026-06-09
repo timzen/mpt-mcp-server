@@ -241,6 +241,20 @@ export function createDaemonClient({ daemonUrl, agentId, hostId }) {
       return post(`/api/spawn-requests/${encodeURIComponent(requestId)}/ack`, {});
     },
 
+    /**
+     * Create a spawn request. The daemon generates a unique name.
+     * @param {{ cwd?: string, storyId?: string, reason?: string }} opts
+     * @returns {Promise<{ id: string, name: string, hostId: string, status: string, createdAt: string }>}
+     */
+    async createSpawnRequest(opts = {}) {
+      return post('/api/spawn-requests', {
+        hostId: resolvedHostId,
+        cwd: opts.cwd,
+        storyId: opts.storyId,
+        reason: opts.reason,
+      });
+    },
+
     // ═══ Token Usage ═══════════════════════════════════════════════════
 
     /**
