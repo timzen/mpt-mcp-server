@@ -20,7 +20,6 @@ import { dismissAgent } from './dismiss_agent.mjs';
 import { listAgents } from './list_agents.mjs';
 import { getNextWork } from './get_next_work.mjs';
 import { claimTask } from './claim_task.mjs';
-import { transitionTask } from './transition_task.mjs';
 import { releaseTask } from './release_task.mjs';
 import { postComment } from './post_comment.mjs';
 import { createStory } from './create_story.mjs';
@@ -45,7 +44,6 @@ const ROLE_ACCESS = {
   upload_attachment:  { leader: false, teammate: true,  assistant: false },
   get_next_work:     { leader: false, teammate: true,  assistant: false },
   claim_task:        { leader: false, teammate: true,  assistant: false },
-  transition_task:   { leader: false, teammate: true,  assistant: false },
   release_task:      { leader: false, teammate: true,  assistant: false },
   post_comment:      { leader: true,  teammate: true,  assistant: false },
   spawn_agent:       { leader: true,  teammate: false, assistant: false },
@@ -78,7 +76,6 @@ export function createToolRegistry(daemonClient, options = {}) {
     listAgents(daemonClient),
     getNextWork(daemonClient),
     claimTask(daemonClient),
-    transitionTask(daemonClient),
     releaseTask(daemonClient),
     postComment(daemonClient),
     reportTokenUsage(daemonClient),

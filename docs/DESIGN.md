@@ -47,7 +47,7 @@ This separation means the MCP server and the runner can evolve independently. Th
 
 ### Why a shared runner loop with adapters?
 
-The runner loop logic (poll, claim, transition, heartbeat, NEEDS_INPUT, dismissal) is identical across all harnesses. Only the actual CLI invocation differs. By extracting a shared loop that accepts a thin adapter, we:
+The runner loop logic (poll, claim, execute, release, heartbeat, NEEDS_INPUT, dismissal) is identical across all harnesses. Only the actual CLI invocation differs. By extracting a shared loop that accepts a thin adapter, we:
 - Eliminate copy-paste between runners (Claude and Kiro were 95% identical)
 - Get automatic parity: new features (like NEEDS_INPUT detection) land once and work everywhere
 - Make adding new harnesses trivial (~40 lines for an adapter)
@@ -87,8 +87,8 @@ mpt-mcp-server and pi-pizza-team are two integration paths to the **same daemon*
 | TUI widgets | ✅ (toast notifications, status bar) | ❌ (no TUI) |
 | Permission system | ✅ (Pi’s dynamic permissions) | ❌ (harnesses use `--dangerously-skip-permissions` or equivalent) |
 | `pi.sendUserMessage` | ✅ (mid-task message injection) | ❌ (runners use CLI invocations) |
-| Daemon protocol | Agent protocol (next-work/claim/transition/release) | Same |
-| Workflow model | Multi-transition ownership | Same |
+| Daemon protocol | Agent protocol (next-work/claim/release) | Same |
+| Workflow model | Simplified claim/release (daemon manages transitions) | Same |
 | State storage | Daemon | Same daemon |
 | Role filtering | Leader/Teammate/Assistant | Same |
 

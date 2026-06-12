@@ -20,9 +20,8 @@ This is the **harness-agnostic alternative to [pi-pizza-team](https://github.com
 | `dismiss_agent` | Stop a running teammate and close its tmux window |
 | `list_agents` | List all active teammate agents and their tmux status |
 | `get_next_work` | Poll daemon for next task with teammate-allowed transitions |
-| `claim_task` | Claim ownership of a task (no state change) |
-| `transition_task` | Advance a claimed task to the next workflow state |
-| `release_task` | Release a task back to the pool (blocked by lead-only transitions) |
+| `claim_task` | Claim a task and start working (daemon transitions to working state) |
+| `release_task` | Release a task after work (daemon advances to next state) |
 | `post_comment` | Post a comment on a task (status updates, questions) |
 | `report_token_usage` | Report token usage (input/output tokens) for a task |
 
@@ -180,7 +179,6 @@ Each MCP server instance exposes tools based on `MPT_ROLE`:
 | `upload_attachment` | ❌ | ✅ | ❌ |
 | `get_next_work` | ❌ | ✅ | ❌ |
 | `claim_task` | ❌ | ✅ | ❌ |
-| `transition_task` | ❌ | ✅ | ❌ |
 | `release_task` | ❌ | ✅ | ❌ |
 | `post_comment` | ✅ | ✅ | ❌ |
 | `report_token_usage` | ❌ | ✅ | ❌ |
@@ -260,7 +258,6 @@ mpt-mcp-server/
 │   │   ├── list_agents.mjs   # List active teammates
 │   │   ├── get_next_work.mjs # Poll daemon for next task (workflow-aware)
 │   │   ├── claim_task.mjs    # Claim task ownership
-│   │   ├── transition_task.mjs # Advance task state
 │   │   ├── release_task.mjs  # Release task back to pool
 │   │   └── post_comment.mjs  # Post comment on a task
 │   ├── runners/

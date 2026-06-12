@@ -11,7 +11,7 @@ export function getNextWork(daemonClient) {
     definition: {
       name: 'get_next_work',
       description:
-        'Poll the daemon for the next available task with teammate-allowed transitions. Returns the task with its description, comments, context, and available transitions. Returns null if no work is available.',
+        'Poll the daemon for the next available task. Returns the task ID, story ID, and title. Returns null if no work is available. Use claim_task to claim and get full task details.',
       inputSchema: {
         type: 'object',
         properties: {},

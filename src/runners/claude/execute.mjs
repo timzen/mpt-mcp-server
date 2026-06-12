@@ -51,7 +51,7 @@ export async function executeTask(task, config) {
 function buildSystemContext(task, config) {
   return [
     `You are agent "${config.agentId}" working on task "${task.id}".`,
-    'You have MCP tools: save_memory, search_memory, upload_attachment, post_comment, get_next_work, claim_task, transition_task, release_task.',
+    'You have MCP tools: save_memory, search_memory, upload_attachment, post_comment, get_next_work, claim_task, release_task.',
     'Focus on completing the work described in the prompt. Provide a clear summary when done.',
   ].join(' ');
 }

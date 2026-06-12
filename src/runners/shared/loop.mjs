@@ -2,13 +2,13 @@
  * loop.mjs — Shared runner loop for all harness adapters.
  *
  * Owns the full agent lifecycle:
- *   register → poll → claim → transition → execute → transition → release → repeat
+ *   register → poll → claim → execute → release → repeat
  *
  * Also handles:
  *   - Heartbeat management (every 30s)
  *   - SIGINT/SIGTERM graceful shutdown
  *   - Heartbeat dismissal (dismissed: true → stop loop)
- *   - NEEDS_INPUT detection and blocked-state transition
+ *   - NEEDS_INPUT detection
  *   - Prompt building (buildWorkflowPrompt)
  *   - Summary extraction from harness output
  *   - MCP config generation (for adapters that declare supportsMcp: true)
@@ -88,7 +88,7 @@ export async function runLoop(adapter) {
       const task = response.task;
       log('info', `Got task: ${task.id} — "${task.title}"`);
 
-      // ─── Claim ─────────────────────────────────────────────────
+      // ─── Claim (daemon transitions to working state) ───────────
       const claim = await client.claimTask(task.id);
       if (!claim.success) {
         log('info', `Failed to claim task ${task.id} (someone else got it)`);
@@ -97,112 +97,60 @@ export async function runLoop(adapter) {
       }
 
       currentTaskId = task.id;
-      let availableTransitions = claim.availableTransitions || task.availableTransitions || [];
       client.heartbeat('working', task.id);
 
-      // ─── Transition to first working state ─────────────────────
-      const firstTransition = availableTransitions[0];
-      if (!firstTransition) {
-        log('warn', `Task ${task.id} has no available transitions — releasing`);
+      const claimedTask = claim.task || task;
+      const instructions = claim.instructions;
+      const stateContext = claim.stateContext;
+      const story = claim.story;
+
+      // ─── Execute ───────────────────────────────────────────────
+      const prompt = buildWorkflowPrompt(claimedTask, instructions, stateContext, story);
+
+      // Post status comment
+      await client.postComment(task.id, '[status] Starting work on this task.').catch(() => {});
+
+      // Write MCP config if the adapter supports it
+      let mcpConfigPath = null;
+      if (adapter.supportsMcp) {
+        mcpConfigPath = await writeTempMcpConfig(config);
+      }
+
+      // Execute via harness adapter
+      const result = await adapter.execute(prompt, { ...config, mcpConfigPath });
+
+      // Cleanup temp MCP config
+      if (mcpConfigPath) {
+        await unlink(mcpConfigPath).catch(() => {});
+      }
+
+      // Report token usage if present in output
+      const tokenUsage = parseTokenUsage(result.output);
+      if (tokenUsage) {
+        await client.reportTokenUsage(task.id, tokenUsage).catch((err) => {
+          log('debug', `Failed to report token usage: ${err.message}`);
+        });
+      }
+
+      // ─── NEEDS_INPUT detection ─────────────────────────────────
+      if (result.output && result.output.includes('NEEDS_INPUT:')) {
+        const question = extractNeedsInput(result.output);
+        await client.postComment(task.id, `[needs_input] ${question}`).catch(() => {});
+        log('info', `Task ${task.id}: agent needs input — releasing`);
         await client.releaseTask(task.id);
         currentTaskId = null;
         continue;
       }
 
-      let transRes = await client.transitionTask(task.id, firstTransition.state);
-      if (!transRes.success) {
-        log('warn', `Failed to transition task ${task.id} to ${firstTransition.state} — releasing`);
-        await client.releaseTask(task.id);
-        currentTaskId = null;
-        continue;
-      }
+      // ─── Normal completion: release with result ────────────────
+      const summary = extractSummary(result.output);
+      await client.postComment(task.id, `[done] Work complete. Summary:\n${summary}`).catch(() => {});
 
-      availableTransitions = transRes.availableTransitions || [];
-      let instructions = transRes.instructions;
-
-      // ─── Execute loop (may run multiple phases) ────────────────
-      while (running) {
-        const prompt = buildWorkflowPrompt(task, instructions);
-
-        // Post status comment
-        await client.postComment(task.id, '[status] Starting work on this phase.').catch(() => {});
-
-        // Write MCP config if the adapter supports it
-        let mcpConfigPath = null;
-        if (adapter.supportsMcp) {
-          mcpConfigPath = await writeTempMcpConfig(config);
-        }
-
-        // Execute via harness adapter
-        const result = await adapter.execute(prompt, { ...config, mcpConfigPath });
-
-        // Cleanup temp MCP config
-        if (mcpConfigPath) {
-          await unlink(mcpConfigPath).catch(() => {});
-        }
-
-        // Report token usage if present in output
-        const tokenUsage = parseTokenUsage(result.output);
-        if (tokenUsage) {
-          await client.reportTokenUsage(task.id, tokenUsage).catch((err) => {
-            log('debug', `Failed to report token usage: ${err.message}`);
-          });
-        }
-
-        // ─── NEEDS_INPUT detection ────────────────────────────────
-        if (result.output && result.output.includes('NEEDS_INPUT:')) {
-          const question = extractNeedsInput(result.output);
-          await client.postComment(task.id, `[needs_input] ${question}`).catch(() => {});
-          log('info', `Task ${task.id}: agent needs input — releasing`);
-          await client.releaseTask(task.id);
-          break;
-        }
-
-        const summary = extractSummary(result.output);
-
-        // Post completion comment
-        await client.postComment(task.id, `[done] Phase complete. Summary:\n${summary}`).catch(() => {});
-
-        // ─── Transition to next state ────────────────────────────
-        const nextTransition = availableTransitions[0];
-        if (!nextTransition) {
-          log('info', `Task ${task.id}: no more transitions — releasing`);
-          await client.releaseTask(task.id);
-          break;
-        }
-
-        transRes = await client.transitionTask(task.id, nextTransition.state, summary);
-
-        if (!transRes.success) {
-          log('warn', `Failed to transition task ${task.id} — releasing`);
-          await client.releaseTask(task.id);
-          break;
-        }
-
-        // Auto-released (reached done state)?
-        if (transRes.released) {
-          log('info', `Task ${task.id} completed (reached done state)`);
-          break;
-        }
-
-        availableTransitions = transRes.availableTransitions || [];
-        instructions = transRes.instructions;
-
-        // If no more transitions after this state, release
-        if (availableTransitions.length === 0) {
-          log('info', `Task ${task.id}: no more transitions from new state — releasing`);
-          await client.releaseTask(task.id);
-          break;
-        }
-
-        // If no instructions for next phase, auto-advance
-        if (!instructions) {
-          log('info', `Task ${task.id}: advancing without instructions`);
-          continue;
-        }
-
-        // Otherwise loop back to execute with new instructions
-        log('info', `Task ${task.id}: continuing to next phase`);
+      const releaseRes = await client.releaseTask(task.id, summary);
+      if (releaseRes.completed) {
+        log('info', `Task ${task.id} completed (reached done state)`);
+      } else {
+        log('info', `Task ${task.id} released — new status: ${releaseRes.newStatus || 'unknown'}`);
       }
 
       currentTaskId = null;
@@ -227,8 +175,22 @@ export async function runLoop(adapter) {
 /**
  * Build a prompt for the harness from task + workflow context.
  */
-export function buildWorkflowPrompt(task, instructions) {
+export function buildWorkflowPrompt(task, instructions, stateContext, story) {
   const parts = [];
+
+  // Story context (the bigger picture)
+  if (story) {
+    parts.push(`## Story: ${story.title}\n\n${story.description}\n\n---`);
+  }
+
+  // State context (what state we're in, what release does)
+  if (stateContext) {
+    parts.push(`## State Context\n\n${stateContext.guidance}`);
+    if (stateContext.exitInstructions) {
+      parts.push(`\n### Exit Criteria (for advancing to '${stateContext.exitsTo}')\n\n${stateContext.exitInstructions}`);
+    }
+    parts.push('\n---');
+  }
 
   // Transition instructions (what to do in this phase)
   if (instructions) {
@@ -321,9 +283,6 @@ function sleep(ms) {
 
 /**
  * Parse token usage from harness output.
- * Claude's --output-format text includes usage stats like:
- *   Input tokens: 1234
- *   Output tokens: 567
  * @param {string} output
  * @returns {{inputTokens: number, outputTokens: number, model?: string}|null}
  */
@@ -339,7 +298,6 @@ export function parseTokenUsage(output) {
   if (inputMatch) usage.inputTokens = parseInt(inputMatch[1].replace(/,/g, ''), 10);
   if (outputMatch) usage.outputTokens = parseInt(outputMatch[1].replace(/,/g, ''), 10);
 
-  // Try to extract model
   const modelMatch = output.match(/model\s*[:=]\s*([\w.-]+)/i);
   if (modelMatch) usage.model = modelMatch[1];
 

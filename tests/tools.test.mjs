@@ -47,16 +47,11 @@ function createMockDaemonClient(overrides = {}) {
 
     async claimTask(taskId) {
       calls.push({ method: 'claimTask', args: { taskId } });
-      return { success: true, availableTransitions: ['in_progress'] };
+      return { success: true, task: { id: taskId, storyId: 's1', title: 'Test', description: 'Desc', status: 'working' }, instructions: 'Do the thing' };
     },
 
-    async transitionTask(taskId, targetState, result) {
-      calls.push({ method: 'transitionTask', args: { taskId, targetState, result } });
-      return { success: true, released: targetState === 'done' };
-    },
-
-    async releaseTask(taskId) {
-      calls.push({ method: 'releaseTask', args: { taskId } });
+    async releaseTask(taskId, result) {
+      calls.push({ method: 'releaseTask', args: { taskId, result } });
       return { success: true };
     },
 
@@ -218,26 +213,12 @@ describe('claim_task', () => {
   });
 });
 
-describe('transition_task', () => {
-  test('transitions task via daemon', async () => {
+describe('release_task', () => {
+  test('releases task with result via daemon', async () => {
     const { client, registry } = setupWithRole('teammate');
-    const result = await registry.callTool('transition_task', {
-      taskId: 'task-1',
-      targetState: 'done',
-      result: 'All finished',
-    });
+    const result = await registry.callTool('release_task', { taskId: 'task-1', result: 'All finished' });
     const data = parseResult(result);
     assert.equal(data.success, true);
-    assert.equal(data.released, true);
-    assert.equal(client.calls[0].args.targetState, 'done');
-  });
-});
-
-describe('release_task', () => {
-  test('releases task via daemon', async () => {
-    const { client, registry } = setupWithRole('teammate');
-    const result = await registry.callTool('release_task', { taskId: 'task-1' });
-    const data = parseResult(result);
     assert.equal(data.success, true);
     assert.equal(client.calls[0].args.taskId, 'task-1');
   });
@@ -380,7 +361,6 @@ describe('role-based filtering', () => {
     assert.ok(!names.includes('get_next_work'));
     assert.ok(!names.includes('claim_task'));
     assert.ok(!names.includes('transition_task'));
-    assert.ok(!names.includes('release_task'));
     assert.ok(!names.includes('upload_attachment'));
   });
 
@@ -389,7 +369,6 @@ describe('role-based filtering', () => {
     const names = registry.listTools().map((t) => t.name);
     assert.ok(names.includes('get_next_work'));
     assert.ok(names.includes('claim_task'));
-    assert.ok(names.includes('transition_task'));
     assert.ok(names.includes('release_task'));
     assert.ok(names.includes('upload_attachment'));
     assert.ok(names.includes('post_comment'));

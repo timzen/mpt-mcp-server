@@ -1,9 +1,9 @@
 /**
  * daemon-client.mjs — HTTP client for the my-pizza-team daemon API.
  *
- * Provides all the API calls needed for the multi-transition teammate
- * workflow: register, heartbeat, poll for work, claim, transition,
- * release, comments, and attachments.
+ * Provides all the API calls needed for the simplified teammate
+ * workflow: register, heartbeat, poll for work, claim, release,
+ * comments, and attachments.
  *
  * This is the generic (non-Pi) equivalent of pi-pizza-team's client.ts.
  * Used by MCP tools and runners to communicate with the daemon.
@@ -152,35 +152,25 @@ export function createDaemonClient({ daemonUrl, agentId, hostId }) {
     },
 
     /**
-     * Claim ownership of a task (no state change).
+     * Claim a task and transition to working state.
+     * The daemon assigns ownership and advances to the first valid teammate state.
+     * Returns task details (with context/comments) and transition instructions.
      * @param {string} taskId
-     * @returns {Promise<{success: boolean, availableTransitions?: Array}>}
+     * @returns {Promise<{success: boolean, task?: object, instructions?: string, error?: string}>}
      */
     async claimTask(taskId) {
       return post(`/api/agents/claim/${encodeURIComponent(taskId)}`, { agentId });
     },
 
     /**
-     * Transition a claimed task to the next state.
+     * Release a task after completing work.
+     * The daemon advances to the next state, stores the result, and releases ownership.
      * @param {string} taskId
-     * @param {string} targetState
      * @param {string} [result] - Summary of work done
-     * @returns {Promise<{success: boolean, released?: boolean, instructions?: string, availableTransitions?: Array}>}
+     * @returns {Promise<{success: boolean, newStatus?: string, completed?: boolean, instructions?: string}>}
      */
-    async transitionTask(taskId, targetState, result) {
-      return post(`/api/agents/transition/${encodeURIComponent(taskId)}`, {
-        agentId,
-        status: targetState,
-        result,
-      });
-    },
-
-    /**
-     * Release a task (when blocked by lead-only transitions).
-     * @param {string} taskId
-     */
-    async releaseTask(taskId) {
-      return post(`/api/agents/release/${encodeURIComponent(taskId)}`, { agentId });
+    async releaseTask(taskId, result) {
+      return post(`/api/agents/release/${encodeURIComponent(taskId)}`, { agentId, result });
     },
 
     // ═══ Comments ═════════════════════════════════════════════════════

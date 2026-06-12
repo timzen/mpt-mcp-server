@@ -1,9 +1,9 @@
 /**
- * release_task.mjs — Tool to release a task back to the pool.
+ * release_task.mjs — Tool to release a task after completing work.
  *
- * Proxies to POST /api/agents/release/:taskId. Called when the agent
- * reaches a state where only lead-restricted transitions remain.
- * The lead can then act, and the task may reappear for the agent later.
+ * Proxies to POST /api/agents/release/:taskId. The daemon advances the
+ * task to the next state, stores the result, and releases ownership.
+ * Returns the new status and whether the task is fully complete.
  */
 
 export function releaseTask(daemonClient) {
@@ -11,7 +11,7 @@ export function releaseTask(daemonClient) {
     definition: {
       name: 'release_task',
       description:
-        'Release a claimed task back to the pool. Use this when you reach a state where only lead-restricted transitions remain, or when you cannot continue.',
+        'Release a task after completing your work. The daemon advances it to the next workflow state and releases your ownership. Optionally pass a result summary.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -19,23 +19,17 @@ export function releaseTask(daemonClient) {
             type: 'string',
             description: 'The task ID to release.',
           },
+          result: {
+            type: 'string',
+            description: 'Summary of the work completed (optional).',
+          },
         },
         required: ['taskId'],
       },
     },
-
     async handler(args) {
-      try {
-        const response = await daemonClient.releaseTask(args.taskId);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(response) }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ error: err.message }) }],
-          isError: true,
-        };
-      }
+      const response = await daemonClient.releaseTask(args.taskId, args.result);
+      return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
     },
   };
 }
