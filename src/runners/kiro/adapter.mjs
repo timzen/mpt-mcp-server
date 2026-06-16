@@ -7,11 +7,9 @@
  *
  * The kiro agent uses MCP tools (get_next_work, claim_task, release_task)
  * to coordinate with the daemon — the runner just nudges it.
- *
- * Set MPT_KIRO_HEADLESS=1 for hidden one-shot subprocess mode.
  */
 
-import { spawn, execSync, execFileSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { log } from '../shared/logger.mjs';
@@ -41,18 +39,15 @@ export function createAdapter() {
         agentId: process.env.MPT_AGENT_ID || 'kiro-agent-1',
         kiroBinary: process.env.MPT_KIRO_BIN || 'kiro-cli',
         tmuxSession: process.env.MPT_TMUX_SESSION || 'mpt-demo',
-        headless: process.env.MPT_KIRO_HEADLESS === '1',
       };
     },
 
     /**
      * Execute a prompt via kiro-cli.
      *
-     * Default: launches kiro-cli in a persistent tmux window.
+     * Launches kiro-cli in a persistent tmux window.
      * First call spawns the window with an initial prompt.
      * Subsequent calls send follow-up prompts via tmux send-keys.
-     *
-     * Set MPT_KIRO_HEADLESS=1 for hidden one-shot subprocess mode.
      *
      * @param {string} prompt - The full prompt to send
      * @param {object} config - Config with mcpConfigPath, workDir, agentId, etc.
@@ -64,10 +59,6 @@ export function createAdapter() {
         ensureMcpServer(config);
       } catch (err) {
         log('warn', `Failed to register MCP server with kiro: ${err.message}`);
-      }
-
-      if (config.headless) {
-        return runHeadless(prompt, config);
       }
 
       return runInTmux(prompt, config, windowSpawned, () => { windowSpawned = true; });
@@ -175,61 +166,6 @@ async function runInTmux(prompt, config, alreadySpawned, markSpawned) {
   // Return — the runner will check if the task was released
   return { output: 'Task sent to kiro agent (visible in tmux)', exitCode: 0 };
 }
-
-/**
- * Run kiro-cli as a hidden one-shot subprocess.
- */
-function runHeadless(prompt, config) {
-  const args = [
-    'chat',
-    '--no-interactive',
-    '--trust-all-tools',
-    prompt,
-  ];
-
-  log('info', `Launching kiro-cli (headless) for task`, { promptLength: prompt.length });
-
-  return new Promise((resolve) => {
-    const proc = spawn(config.kiroBinary, args, {
-      cwd: config.workDir,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        MPT_DAEMON_URL: config.daemonUrl,
-        MPT_AGENT_ID: config.agentId,
-      },
-    });
-
-    const stdout = [];
-    const stderr = [];
-
-    proc.stdout.on('data', (chunk) => stdout.push(chunk));
-    proc.stderr.on('data', (chunk) => stderr.push(chunk));
-
-    proc.stdin.end();
-
-    proc.on('close', (code) => {
-      const output = Buffer.concat(stdout).toString('utf-8');
-      const errors = Buffer.concat(stderr).toString('utf-8');
-
-      if (errors) {
-        log('debug', 'Kiro stderr', { stderr: errors.slice(0, 500) });
-      }
-
-      if (code !== 0) {
-        log('warn', `Kiro exited with code ${code}`);
-      }
-
-      resolve({ output: output || errors, exitCode: code ?? 1 });
-    });
-
-    proc.on('error', (err) => {
-      log('error', `Failed to spawn kiro-cli: ${err.message}`);
-      resolve({ output: `Spawn error: ${err.message}`, exitCode: -1 });
-    });
-  });
-}
-
 /**
  * Register the mpt-mcp-server with kiro-cli (idempotent).
  */
