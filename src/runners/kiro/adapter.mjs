@@ -72,7 +72,7 @@ export function createAdapter() {
  */
 async function runInTmux(prompt, config) {
   const { tmuxSession, agentId, kiroBinary, workDir, daemonUrl } = config;
-  const windowName = `${shellSafe(agentId)}-task`;
+  const windowName = shellSafe(agentId);
 
   // Write prompt to a temp file (too long for send-keys)
   const promptDir = join(workDir, '.mpt-tmp');
@@ -112,7 +112,7 @@ async function runInTmux(prompt, config) {
 
     // Check if window still exists
     try {
-      execSync(`tmux has-session -t "${safeSession}" 2>/dev/null && tmux list-windows -t "${safeSession}" -F "#{window_name}" | grep -q "^${safeWindow}$"`, { stdio: 'pipe' });
+      execSync(`tmux list-windows -t "${safeSession}" -F "#{window_name}" | grep -q "^${safeWindow}$"`, { stdio: 'pipe' });
     } catch {
       // Window is gone — kiro finished
       log('info', `Kiro window '${windowName}' closed — task complete`);
