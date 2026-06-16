@@ -14,7 +14,7 @@ This is the **harness-agnostic alternative to [pi-pizza-team](https://github.com
 | `create_story` | Create a new story (unit of plannable work with tasks) |
 | `edit_story` | Update an existing story's details, status, or dependencies |
 | `add_task` | Add a task to a story for teammates to execute |
-| `team_status` | Get a summary of stories, tasks, members, and inbox |
+| `team_status` | Get a summary of stories, tasks, and members |
 | `queue_request` | Queue an async request for the assistant to process |
 | `spawn_agent` | Spawn a teammate agent in a tmux window (leader can observe/interact) |
 | `dismiss_agent` | Stop a running teammate and close its tmux window |

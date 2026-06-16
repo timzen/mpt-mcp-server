@@ -8,7 +8,6 @@
  *   - Heartbeat management (every 30s)
  *   - SIGINT/SIGTERM graceful shutdown
  *   - Heartbeat dismissal (dismissed: true → stop loop)
- *   - NEEDS_INPUT detection
  *   - Prompt building (buildWorkflowPrompt)
  *   - Summary extraction from harness output
  *   - MCP config generation (for adapters that declare supportsMcp: true)
@@ -132,15 +131,6 @@ export async function runLoop(adapter) {
         });
       }
 
-      // ─── NEEDS_INPUT detection ─────────────────────────────────
-      if (result.output && result.output.includes('NEEDS_INPUT:')) {
-        const question = extractNeedsInput(result.output);
-        await client.postComment(task.id, `[needs_input] ${question}`).catch(() => {});
-        log('info', `Task ${task.id}: agent needs input — releasing`);
-        await client.releaseTask(task.id);
-        currentTaskId = null;
-        continue;
-      }
 
       // ─── Normal completion: release with result ────────────────
       const summary = extractSummary(result.output);
@@ -223,7 +213,6 @@ export function buildWorkflowPrompt(task, instructions, stateContext, story) {
     '---',
     `You are working on task ${task.id}. You have MCP tools available for team coordination.`,
     'When you finish your work, provide a clear summary of what you accomplished.',
-    'If you get stuck and need human guidance, output "NEEDS_INPUT:" followed by your question.'
   );
 
   return parts.join('\n');
@@ -245,13 +234,6 @@ export function extractSummary(output) {
   return tail.slice(0, 1000);
 }
 
-/**
- * Extract the NEEDS_INPUT question from output.
- */
-function extractNeedsInput(output) {
-  const match = output.match(/NEEDS_INPUT:\s*([\s\S]*?)(?:\n---|\n##|$)/i);
-  return match ? match[1].trim().slice(0, 500) : 'Agent needs input (no details provided)';
-}
 
 /**
  * Write MCP config to a temp file for harnesses that support it.

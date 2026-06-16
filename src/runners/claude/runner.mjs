@@ -4,7 +4,7 @@
  *
  * Thin wrapper that creates the Claude adapter and starts the shared
  * runner loop. All lifecycle logic (poll, claim, transition, heartbeat,
- * NEEDS_INPUT, dismissal) lives in the shared loop.
+ * dismissal) lives in the shared loop.
  *
  * Environment variables:
  *   MPT_DAEMON_URL    - Daemon HTTP endpoint (default: http://localhost:7437)
