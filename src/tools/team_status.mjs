@@ -2,7 +2,7 @@
  * team_status.mjs — Tool to get a formatted team status summary from the daemon.
  *
  * Delegates to GET /api/status. Returns stories, tasks by status,
- * registered members, and inbox state.
+ * registered members, and agent activity.
  */
 
 export function teamStatus(daemonClient) {
@@ -10,7 +10,7 @@ export function teamStatus(daemonClient) {
     definition: {
       name: 'team_status',
       description:
-        'Get a summary of the team status: stories, tasks by status, registered members, and inbox. Useful for the leader to understand current state before planning.',
+        'Get a summary of the team status: stories, tasks by status, registered members. Useful for the leader to understand current state before planning.',
       inputSchema: {
         type: 'object',
         properties: {},
