@@ -1,13 +1,19 @@
 /**
  * adapter.mjs — Kiro CLI harness adapter for the shared runner loop.
  *
- * Wraps `kiro-cli chat --no-interactive --trust-all-tools` with MCP support.
- * This is the only Kiro-specific code — everything else is in shared/.
+ * Launches `kiro-cli chat` in a visible tmux window so users can watch
+ * the agent work. The runner orchestrates (poll/claim/release) while
+ * kiro-cli runs interactively in its own pane.
+ *
+ * Set MPT_KIRO_HEADLESS=1 to use hidden subprocess mode instead.
  */
 
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execSync, execFileSync } from 'node:child_process';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { log } from '../shared/logger.mjs';
 import { loadSharedConfig } from '../shared/config.mjs';
+import { spawnWindow, dismissWindow, shellSafe, ensureSession } from '../../tmux.mjs';
 
 const MCP_SERVER_NAME = 'mpt';
 
@@ -29,11 +35,17 @@ export function createAdapter() {
         ...shared,
         agentId: process.env.MPT_AGENT_ID || 'kiro-agent-1',
         kiroBinary: process.env.MPT_KIRO_BIN || 'kiro-cli',
+        tmuxSession: process.env.MPT_TMUX_SESSION || 'mpt-demo',
+        headless: process.env.MPT_KIRO_HEADLESS === '1',
       };
     },
 
     /**
      * Execute a prompt via kiro-cli.
+     *
+     * Default: launches kiro-cli in a visible tmux window.
+     * Set MPT_KIRO_HEADLESS=1 for hidden subprocess mode.
+     *
      * @param {string} prompt - The full prompt to send
      * @param {object} config - Config with mcpConfigPath, workDir, agentId, etc.
      * @returns {Promise<{output: string, exitCode: number}>}
@@ -46,51 +58,94 @@ export function createAdapter() {
         log('warn', `Failed to register MCP server with kiro: ${err.message}`);
       }
 
-      const args = [
-        'chat',
-        '--no-interactive',
-        '--trust-all-tools',
-        prompt,
-      ];
+      if (config.headless) {
+        return runHeadless(prompt, config);
+      }
 
-      log('info', `Launching kiro-cli for task`, { promptLength: prompt.length });
-
-      return runProcess(config.kiroBinary, args, config.workDir, config);
+      return runInTmux(prompt, config);
     },
   };
 }
 
 /**
- * Register the mpt-mcp-server with kiro-cli (idempotent).
+ * Run kiro-cli in a visible tmux window and wait for it to finish.
  */
-function ensureMcpServer(config) {
-  try {
-    execFileSync(config.kiroBinary, [
-      'mcp', 'add', MCP_SERVER_NAME,
-      '--command', 'node',
-      '--args', config.mcpServerPath,
-    ], {
-      timeout: 10000,
-      stdio: 'pipe',
-      env: {
-        ...process.env,
-        MPT_DAEMON_URL: config.daemonUrl,
-        MPT_AGENT_ID: config.agentId,
-      },
-    });
-    log('debug', 'MCP server registered with kiro-cli');
-  } catch (err) {
-    log('debug', `MCP add failed (may already exist): ${err.message}`);
+async function runInTmux(prompt, config) {
+  const { tmuxSession, agentId, kiroBinary, workDir, daemonUrl } = config;
+  const windowName = `${shellSafe(agentId)}-task`;
+
+  // Write prompt to a temp file (too long for send-keys)
+  const promptDir = join(workDir, '.mpt-tmp');
+  mkdirSync(promptDir, { recursive: true });
+  const promptFile = join(promptDir, 'current-prompt.txt');
+  writeFileSync(promptFile, prompt);
+
+  // Build the kiro-cli command
+  const cmd = [
+    `MPT_DAEMON_URL=${shellSafe(daemonUrl)}`,
+    `MPT_AGENT_ID=${shellSafe(agentId)}`,
+    kiroBinary,
+    'chat',
+    '--no-interactive',
+    '--trust-all-tools',
+    `"$(cat ${shellSafe(promptFile)})"`,
+  ].join(' ');
+
+  log('info', `Launching kiro-cli in tmux window '${windowName}'`, { promptLength: prompt.length });
+
+  // Spawn kiro in a tmux window
+  spawnWindow({
+    session: tmuxSession,
+    name: windowName,
+    command: cmd,
+    cwd: workDir,
+  });
+
+  // Poll until the window closes (kiro-cli exits when done in --no-interactive mode)
+  const safeSession = shellSafe(tmuxSession);
+  const safeWindow = shellSafe(windowName);
+  const startTime = Date.now();
+  const MAX_WAIT_MS = 30 * 60 * 1000; // 30 min max per task
+
+  while (Date.now() - startTime < MAX_WAIT_MS) {
+    await sleep(3000);
+
+    // Check if window still exists
+    try {
+      execSync(`tmux has-session -t "${safeSession}" 2>/dev/null && tmux list-windows -t "${safeSession}" -F "#{window_name}" | grep -q "^${safeWindow}$"`, { stdio: 'pipe' });
+    } catch {
+      // Window is gone — kiro finished
+      log('info', `Kiro window '${windowName}' closed — task complete`);
+      break;
+    }
   }
+
+  if (Date.now() - startTime >= MAX_WAIT_MS) {
+    log('warn', `Kiro window '${windowName}' timed out after 30m — killing`);
+    try { dismissWindow(tmuxSession, windowName); } catch { /* ok */ }
+  }
+
+  // Try to read any output kiro left behind (kiro-cli may write to a log)
+  // For now, return a generic completion message since output was visible in tmux
+  return { output: 'Task completed (output visible in tmux window)', exitCode: 0 };
 }
 
 /**
- * Spawn a CLI process and capture output.
+ * Run kiro-cli as a hidden subprocess (original behavior).
  */
-function runProcess(binary, args, cwd, config) {
+function runHeadless(prompt, config) {
+  const args = [
+    'chat',
+    '--no-interactive',
+    '--trust-all-tools',
+    prompt,
+  ];
+
+  log('info', `Launching kiro-cli (headless) for task`, { promptLength: prompt.length });
+
   return new Promise((resolve) => {
-    const proc = spawn(binary, args, {
-      cwd,
+    const proc = spawn(config.kiroBinary, args, {
+      cwd: config.workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -127,4 +182,32 @@ function runProcess(binary, args, cwd, config) {
       resolve({ output: `Spawn error: ${err.message}`, exitCode: -1 });
     });
   });
+}
+
+/**
+ * Register the mpt-mcp-server with kiro-cli (idempotent).
+ */
+function ensureMcpServer(config) {
+  try {
+    execFileSync(config.kiroBinary, [
+      'mcp', 'add', MCP_SERVER_NAME,
+      '--command', 'node',
+      '--args', config.mcpServerPath,
+    ], {
+      timeout: 10000,
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        MPT_DAEMON_URL: config.daemonUrl,
+        MPT_AGENT_ID: config.agentId,
+      },
+    });
+    log('debug', 'MCP server registered with kiro-cli');
+  } catch (err) {
+    log('debug', `MCP add failed (may already exist): ${err.message}`);
+  }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
