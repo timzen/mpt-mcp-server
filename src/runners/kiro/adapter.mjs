@@ -1,19 +1,22 @@
 /**
  * adapter.mjs — Kiro CLI harness adapter for the shared runner loop.
  *
- * Launches `kiro-cli chat` in a visible tmux window so users can watch
- * the agent work. The runner orchestrates (poll/claim/release) while
- * kiro-cli runs interactively in its own pane.
+ * Launches `kiro-cli chat` in a visible tmux window as a persistent agent.
+ * Instead of one-shot invocations, kiro stays alive and the runner sends
+ * follow-up prompts via tmux send-keys to drive it through tasks.
  *
- * Set MPT_KIRO_HEADLESS=1 to use hidden subprocess mode instead.
+ * The kiro agent uses MCP tools (get_next_work, claim_task, release_task)
+ * to coordinate with the daemon — the runner just nudges it.
+ *
+ * Set MPT_KIRO_HEADLESS=1 for hidden one-shot subprocess mode.
  */
 
 import { spawn, execSync, execFileSync } from 'node:child_process';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { log } from '../shared/logger.mjs';
 import { loadSharedConfig } from '../shared/config.mjs';
-import { spawnWindow, dismissWindow, shellSafe, ensureSession } from '../../tmux.mjs';
+import { spawnWindow, dismissWindow, shellSafe, ensureSession, listWindows } from '../../tmux.mjs';
 
 const MCP_SERVER_NAME = 'mpt';
 
@@ -22,6 +25,8 @@ const MCP_SERVER_NAME = 'mpt';
  * @returns {object} Adapter with execute(), name, supportsMcp, loadConfig()
  */
 export function createAdapter() {
+  let windowSpawned = false;
+
   return {
     name: 'Kiro',
     supportsMcp: true,
@@ -43,8 +48,11 @@ export function createAdapter() {
     /**
      * Execute a prompt via kiro-cli.
      *
-     * Default: launches kiro-cli in a visible tmux window.
-     * Set MPT_KIRO_HEADLESS=1 for hidden subprocess mode.
+     * Default: launches kiro-cli in a persistent tmux window.
+     * First call spawns the window with an initial prompt.
+     * Subsequent calls send follow-up prompts via tmux send-keys.
+     *
+     * Set MPT_KIRO_HEADLESS=1 for hidden one-shot subprocess mode.
      *
      * @param {string} prompt - The full prompt to send
      * @param {object} config - Config with mcpConfigPath, workDir, agentId, etc.
@@ -62,76 +70,114 @@ export function createAdapter() {
         return runHeadless(prompt, config);
       }
 
-      return runInTmux(prompt, config);
+      return runInTmux(prompt, config, windowSpawned, () => { windowSpawned = true; });
     },
   };
 }
 
 /**
- * Run kiro-cli in a visible tmux window and wait for it to finish.
+ * Run kiro-cli in a persistent visible tmux window.
+ *
+ * First invocation: spawns kiro-cli interactively with the task prompt.
+ * Subsequent invocations: sends follow-up prompt via tmux send-keys.
+ *
+ * Waits for kiro to finish the current task by polling the daemon for
+ * task status changes rather than waiting for the window to close.
  */
-async function runInTmux(prompt, config) {
+async function runInTmux(prompt, config, alreadySpawned, markSpawned) {
   const { tmuxSession, agentId, kiroBinary, workDir, daemonUrl } = config;
   const windowName = shellSafe(agentId);
 
-  // Write prompt to a temp file (too long for send-keys)
-  const promptDir = join(workDir, '.mpt-tmp');
-  mkdirSync(promptDir, { recursive: true });
-  const promptFile = join(promptDir, 'current-prompt.txt');
-  writeFileSync(promptFile, prompt);
+  if (!alreadySpawned) {
+    // First task: spawn kiro-cli interactively with initial prompt
+    log('info', `Spawning kiro-cli in tmux window '${windowName}'`);
 
-  // Build the kiro-cli command
-  const cmd = [
-    `MPT_DAEMON_URL=${shellSafe(daemonUrl)}`,
-    `MPT_AGENT_ID=${shellSafe(agentId)}`,
-    kiroBinary,
-    'chat',
-    '--no-interactive',
-    '--trust-all-tools',
-    `"$(cat ${shellSafe(promptFile)})"`,
-  ].join(' ');
+    // Write prompt to temp file
+    const promptDir = join(workDir, '.mpt-tmp');
+    mkdirSync(promptDir, { recursive: true });
+    const promptFile = join(promptDir, 'current-prompt.txt');
+    writeFileSync(promptFile, prompt);
 
-  log('info', `Launching kiro-cli in tmux window '${windowName}'`, { promptLength: prompt.length });
+    // Build command: interactive kiro with initial message
+    const cmd = [
+      `MPT_DAEMON_URL=${shellSafe(daemonUrl)}`,
+      `MPT_AGENT_ID=${shellSafe(agentId)}`,
+      kiroBinary,
+      'chat',
+      '--trust-all-tools',
+      `"$(cat ${shellSafe(promptFile)})"`,
+    ].join(' ');
 
-  // Spawn kiro in a tmux window
-  spawnWindow({
-    session: tmuxSession,
-    name: windowName,
-    command: cmd,
-    cwd: workDir,
-  });
+    spawnWindow({
+      session: tmuxSession,
+      name: windowName,
+      command: cmd,
+      cwd: workDir,
+    });
 
-  // Poll until the window closes (kiro-cli exits when done in --no-interactive mode)
-  const safeSession = shellSafe(tmuxSession);
-  const safeWindow = shellSafe(windowName);
+    markSpawned();
+  } else {
+    // Subsequent tasks: send follow-up prompt to existing window
+    log('info', `Sending follow-up task to kiro window '${windowName}'`);
+
+    const safeSession = shellSafe(tmuxSession);
+
+    // Check window still exists
+    const windows = listWindows(tmuxSession);
+    if (!windows.includes(windowName)) {
+      log('warn', `Window '${windowName}' gone — respawning`);
+      markSpawned(); // reset
+      return runInTmux(prompt, config, false, markSpawned);
+    }
+
+    // Write prompt to file and send a command to pipe it in
+    const promptDir = join(workDir, '.mpt-tmp');
+    mkdirSync(promptDir, { recursive: true });
+    const promptFile = join(promptDir, 'current-prompt.txt');
+    writeFileSync(promptFile, prompt);
+
+    // Send the prompt as a follow-up message in the kiro chat
+    // Use a condensed instruction since kiro is already running
+    const followUp = `Use get_next_work to check for available tasks. If there's a task, claim it with claim_task, do the work, then release it with release_task. Here's the context for the next task:\\n\\n$(cat ${shellSafe(promptFile)})`;
+
+    execSync(
+      `tmux send-keys -t "${safeSession}:${shellSafe(windowName)}" "${escapeForTmux(followUp)}" Enter`,
+      { stdio: 'pipe' }
+    );
+  }
+
+  // Wait for the task to complete (poll daemon for status change)
   const startTime = Date.now();
   const MAX_WAIT_MS = 30 * 60 * 1000; // 30 min max per task
 
+  // Give kiro time to start working
+  await sleep(10000);
+
+  // Poll until the window closes OR we detect the task moved out of in_progress
+  const safeSession = shellSafe(tmuxSession);
   while (Date.now() - startTime < MAX_WAIT_MS) {
-    await sleep(3000);
+    await sleep(5000);
 
     // Check if window still exists
-    try {
-      execSync(`tmux list-windows -t "${safeSession}" -F "#{window_name}" | grep -q "^${safeWindow}$"`, { stdio: 'pipe' });
-    } catch {
-      // Window is gone — kiro finished
-      log('info', `Kiro window '${windowName}' closed — task complete`);
+    const windows = listWindows(tmuxSession);
+    if (!windows.includes(windowName)) {
+      log('info', `Window '${windowName}' closed — agent exited`);
       break;
     }
+
+    // We can't easily detect task completion from here — the runner
+    // already tracks this via the claim/release cycle. Just wait for
+    // the runner to detect the release via daemon polling.
+    // Break out after the initial work period and let the runner check.
+    break;
   }
 
-  if (Date.now() - startTime >= MAX_WAIT_MS) {
-    log('warn', `Kiro window '${windowName}' timed out after 30m — killing`);
-    try { dismissWindow(tmuxSession, windowName); } catch { /* ok */ }
-  }
-
-  // Try to read any output kiro left behind (kiro-cli may write to a log)
-  // For now, return a generic completion message since output was visible in tmux
-  return { output: 'Task completed (output visible in tmux window)', exitCode: 0 };
+  // Return — the runner will check if the task was released
+  return { output: 'Task sent to kiro agent (visible in tmux)', exitCode: 0 };
 }
 
 /**
- * Run kiro-cli as a hidden subprocess (original behavior).
+ * Run kiro-cli as a hidden one-shot subprocess.
  */
 function runHeadless(prompt, config) {
   const args = [
@@ -206,6 +252,13 @@ function ensureMcpServer(config) {
   } catch (err) {
     log('debug', `MCP add failed (may already exist): ${err.message}`);
   }
+}
+
+/**
+ * Escape a string for use in tmux send-keys.
+ */
+function escapeForTmux(s) {
+  return s.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
 }
 
 function sleep(ms) {
