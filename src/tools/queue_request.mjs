@@ -1,10 +1,14 @@
 /**
- * queue_request.mjs — Tool to queue an async request for the assistant.
+ * queue_request.mjs — Tool to send an async request into the team chat.
  *
- * Delegates to POST /api/assistant/messages — the assistant's live chat. The
- * message is queued like one typed in the web UI and picked up on the
- * assistant's next inbox poll (e.g. research or documentation that shouldn't
- * block the current workflow). See my-pizza-team/docs/ASSISTANT_CHAT_V2.md.
+ * Delegates to POST /api/assistant/messages — the team's live chat, answered by
+ * the leader (my-pizza-team/docs/DESIGN.md "One Agent to Talk To"). The message is
+ * queued like one typed in the web UI and picked up on the chat agent's next inbox
+ * poll (e.g. research or documentation that shouldn't block the current workflow).
+ *
+ * Note this tool is meaningful *here* — an external harness handing work to the
+ * team — but was removed from pi-pizza-team's own leader tools, where it would be
+ * the chat agent messaging itself.
  */
 
 export function queueRequest(daemonClient) {
@@ -12,13 +16,13 @@ export function queueRequest(daemonClient) {
     definition: {
       name: 'queue_request',
       description:
-        'Queue a request for the assistant to process asynchronously. Use for research, documentation, or other tasks that can happen in the background.',
+        'Send a request into the team chat for the leader to handle asynchronously. Use for research, documentation, or other tasks that can happen in the background.',
       inputSchema: {
         type: 'object',
         properties: {
           prompt: {
             type: 'string',
-            description: 'The request/prompt for the assistant to process',
+            description: 'The request/prompt for the team chat to handle',
           },
         },
         required: ['prompt'],
