@@ -291,14 +291,17 @@ export function createDaemonClient({ daemonUrl, agentId, hostId }) {
       return post(`/api/stories/${encodeURIComponent(storyId)}/tasks`, { title, description });
     },
 
-    // ═══ Assistant Queue ═══════════════════════════════════════════════
+    // ═══ Assistant Chat ════════════════════════════════════════════════
 
     /**
-     * Queue a request for the assistant to process asynchronously.
-     * @param {string} prompt
+     * Send a request into the assistant's chat as the user.
+     *
+     * The assistant is a live chat (see my-pizza-team/docs/ASSISTANT_CHAT_V2.md):
+     * the message is queued exactly like one typed in the web UI, and the
+     * assistant picks it up on its next inbox poll. There is no separate queue.
      */
     async enqueueAssistantRequest(prompt) {
-      return post('/api/assistant/queue', { prompt });
+      return post('/api/assistant/messages', { content: prompt });
     },
 
     // ═══ Memory Notes ═════════════════════════════════════════════════

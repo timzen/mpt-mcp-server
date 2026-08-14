@@ -1,9 +1,10 @@
 /**
  * queue_request.mjs — Tool to queue an async request for the assistant.
  *
- * Delegates to POST /api/assistant/queue. The assistant processes
- * queued requests asynchronously (e.g., research, documentation tasks
- * that don't block the current workflow).
+ * Delegates to POST /api/assistant/messages — the assistant's live chat. The
+ * message is queued like one typed in the web UI and picked up on the
+ * assistant's next inbox poll (e.g. research or documentation that shouldn't
+ * block the current workflow). See my-pizza-team/docs/ASSISTANT_CHAT_V2.md.
  */
 
 export function queueRequest(daemonClient) {
