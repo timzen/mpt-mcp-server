@@ -89,6 +89,21 @@ function createMockDaemonClient(overrides = {}) {
       calls.push({ method: 'dismissAgent', args: { targetAgentId } });
       return { dismissed: true };
     },
+
+    async createSpawnRequest(opts) {
+      calls.push({ method: 'createSpawnRequest', args: opts });
+      return { id: 'spawn-1', name: 'swift-ripley', hostId: 'test-host', status: 'pending' };
+    },
+
+    async getSpawnRequests() {
+      calls.push({ method: 'getSpawnRequests' });
+      return { requests: [] };
+    },
+
+    async ackSpawnRequest(requestId) {
+      calls.push({ method: 'ackSpawnRequest', args: { requestId } });
+      return { success: true };
+    },
   };
 }
 
@@ -348,6 +363,8 @@ describe('role-based filtering', () => {
     assert.ok(names.includes('add_task'));
     assert.ok(names.includes('team_status'));
     assert.ok(names.includes('spawn_agent'));
+    assert.ok(names.includes('get_spawn_requests'));
+    assert.ok(names.includes('ack_spawn_request'));
     assert.ok(names.includes('dismiss_agent'));
     assert.ok(names.includes('list_agents'));
     assert.ok(names.includes('save_memory'));
@@ -355,13 +372,11 @@ describe('role-based filtering', () => {
     assert.ok(names.includes('post_comment'));
   });
 
-  test('leader does NOT have workflow execution tools', () => {
+  test('leader does NOT have upload_attachment or report_token_usage', () => {
     const { registry } = setupWithRole('leader');
     const names = registry.listTools().map((t) => t.name);
-    assert.ok(!names.includes('get_next_work'));
-    assert.ok(!names.includes('claim_task'));
-    assert.ok(!names.includes('transition_task'));
     assert.ok(!names.includes('upload_attachment'));
+    assert.ok(!names.includes('report_token_usage'));
   });
 
   test('teammate has workflow tools', () => {
@@ -382,9 +397,8 @@ describe('role-based filtering', () => {
     assert.ok(!names.includes('edit_story'));
     assert.ok(!names.includes('add_task'));
     assert.ok(!names.includes('team_status'));
-    assert.ok(!names.includes('spawn_agent'));
     assert.ok(!names.includes('dismiss_agent'));
-    assert.ok(!names.includes('save_memory'));
+    assert.ok(!names.includes('list_agents'));
   });
 
   test('assistant has planning and memory tools', () => {

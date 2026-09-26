@@ -2,94 +2,60 @@
 
 ## Philosophy
 
-mpt-mcp-server provides the minimal viable coordination layer for multi-agent teams. It’s the harness-agnostic alternative to pi-pizza-team: same daemon, same agent protocol, but delivered as a standalone MCP tool layer rather than a Pi extension. Any harness that supports MCP can participate.
-
-It’s a shared “backplane” that agents connect to via MCP, enabling them to share knowledge, coordinate tasks, and manage work items through the my-pizza-team daemon.
+mpt-mcp-server is a thin MCP wrapper around the my-pizza-team daemon's HTTP API. It exposes daemon capabilities as MCP tools so any harness can participate in an mpt team.
 
 ## Principles
 
-1. **Simple over clever** — Stdio transport, daemon-backed state, plain JSON. No unnecessary abstraction layers.
+1. **Thin wrapper** — Each tool is a 1:1 proxy to a daemon HTTP endpoint. No business logic in this layer.
 
-2. **Tool-first** — Every capability is exposed as an MCP tool with a clear schema. No resources or prompts (yet) — just tools that agents can call.
+2. **Harness-agnostic** — Tools don't know or care what's calling them. Works with any MCP client.
 
-3. **Daemon is the source of truth** — All state lives in the my-pizza-team daemon. Tools delegate to daemon API calls. No local state that could go stale or be invisible to teammates.
+3. **Daemon is the source of truth** — All state lives in the daemon. No local state. `MPT_DAEMON_URL` is required; fails fast if not set.
 
-4. **Test without the server** — The registry can be tested directly with a mock daemon client, without spinning up the MCP protocol layer or a real daemon. Fast, reliable tests.
+4. **Passive** — No loops, no polling, no scheduling. The harness drives its own lifecycle using whatever native mechanism it has.
 
-5. **Client-agnostic** — Works with any MCP client. No assumptions about Claude Code, Cursor, or Kiro internals — just standard MCP protocol over stdio.
+5. **Composable** — Tools are independent. A leader can use planning tools without using tmux tools. A teammate can work without ever calling spawn tools.
 
 ## Rationale
 
-### Why daemon-first (no in-memory store)?
+### Why no runners?
 
-The in-memory store was removed because it created a false sense of functionality — tools appeared to work but data was lost on restart and invisible to the rest of the team. The daemon is always the source of truth. `MPT_DAEMON_URL` is required at startup; if it's not set, the server fails fast with a clear error message. This makes failures obvious rather than silent.
+Each harness has its own execution model. Pi has extensions. MeshClaw has cron/spawn_run. Kiro has persistent sessions. An external runner that puppeteers a harness:
+- Duplicates lifecycle management the harness already provides
+- Fights the harness's native session management
+- Creates fragile process orchestration (detecting "done", crash recovery, etc.)
 
-### Why not per-tool local state?
+The better model: give the harness MCP tools + a skill/prompt that teaches the protocol, and let it self-drive.
 
-All state goes through the daemon API. This ensures cross-agent visibility (any agent can see any other agent's comments, memory notes, etc.) and survives process restarts. Testing uses a mock daemon client injected at the registry level.
+### Why decouple spawn requesting from spawn fulfillment?
+
+`spawn_agent` creates a *request*. A leader *fulfills* it. This separation means:
+- Any agent can request a teammate (not just the leader)
+- The leader decides *how* to spawn (its own mechanism, not prescribed)
+- Multiple leaders on different hosts can fulfill requests for their own host
+- The daemon is the coordination point, not this MCP server
+
+### Why optional tmux tools?
+
+Some leaders (Pi, simple scripts) use tmux for agent management. Others (MeshClaw) have their own spawning. Tmux tools are available but not coupled to agent lifecycle — they're just utilities.
 
 ### Why factory functions for tools?
 
-Each tool module exports a factory `(daemonClient) → {definition, handler}`. This pattern:
-- Makes dependencies explicit (just the daemon client)
-- Keeps tools independently testable (inject a mock client)
-- Allows future tools to depend on additional services without changing the registry
+Each tool module exports `(daemonClient) → {definition, handler}`. This:
+- Makes dependencies explicit
+- Keeps tools independently testable (inject a mock)
+- Allows the registry to filter by role at creation time
 
-### Why a separate runner process?
+### Why role-based filtering?
 
-Claude Code doesn't have a built-in task loop. The runner provides the persistent loop that:
-- Polls a daemon for work (decoupled from any specific task queue)
-- Spawns claude in `--print` mode (non-interactive, clean output)
-- Reports results back with retries
-- Handles graceful shutdown via SIGINT/SIGTERM
+Different agents need different capabilities. A teammate shouldn't see `create_story` (confusing). A leader should see everything relevant. Filtering at the tool level (rather than in prompts) keeps context clean.
 
-This separation means the MCP server and the runner can evolve independently. The MCP server is the "toolbox" available during execution; the runner is the "scheduler" that drives the loop.
+## Relationship to Other Integrations
 
-### Why a shared runner loop with adapters?
+| Integration | Model | Lifecycle Owner |
+|-------------|-------|-----------------|
+| pi-pizza-team | Pi extension (native) | Pi's extension framework |
+| PizzaTeamMC | MeshClaw skills + this MCP server | MeshClaw's gateway (cron, spawn_run) |
+| Direct MCP | Any harness + this MCP server | Harness-specific (scripts, prompts, etc.) |
 
-The runner loop logic (poll, claim, execute, release, heartbeat, NEEDS_INPUT, dismissal) is identical across all harnesses. Only the actual CLI invocation differs. By extracting a shared loop that accepts a thin adapter, we:
-- Eliminate copy-paste between runners (Claude and Kiro were 95% identical)
-- Get automatic parity: new features (like NEEDS_INPUT detection) land once and work everywhere
-- Make adding new harnesses trivial (~40 lines for an adapter)
-- Allow the Codex runner to use the correct agent protocol (it was using a legacy API)
-
-### Why `--print` mode?
-
-`--print` gives us a single-shot, non-interactive execution with capturable stdout. This is simpler and more reliable than trying to drive an interactive session, and it's what the claude CLI was designed for in automation contexts.
-
-### Why temp MCP config files?
-
-The runner writes a temp `mcp.json` per invocation and passes it via `--mcp-config`. This avoids polluting the user's global or project MCP config, and ensures each session gets a clean configuration.
-
-### Why tmux for team orchestration?
-
-The core value proposition of mpt's leader/teammate model is **user observability and intervention**. tmux windows give each agent a real terminal that:
-- Users can hop into at any time (`tmux select-window`)
-- Shows live output so you can see what the agent is doing
-- Accepts user input for course-correction or pairing
-- Persists even if the user disconnects (tmux sessions survive)
-
-This is fundamentally different from headless `child_process.spawn()` where output is piped and users can't interact. The tradeoff is requiring tmux on the host, which is acceptable for the developer audience.
-
-### Why each teammate gets its own MCP server?
-
-MCP uses stdio transport (stdin/stdout JSON-RPC), which is inherently 1:1 — one client per server process. Rather than fighting this with a shared HTTP transport, we embrace it: each agent spawns its own `mpt-mcp-server` instance. The daemon remains the shared state layer for cross-agent coordination (tasks, messages, memory).
-
-## Relationship to pi-pizza-team
-
-mpt-mcp-server and pi-pizza-team are two integration paths to the **same daemon** (my-pizza-team):
-
-| | pi-pizza-team | mpt-mcp-server |
-|--|---------------|----------------|
-| Integration model | Pi Extension API | Standalone MCP server |
-| Transport | Pi’s internal tool system | stdio JSON-RPC (MCP protocol) |
-| Harness support | Pi only | Claude Code, Cursor, Kiro, Codex, any MCP client |
-| TUI widgets | ✅ (toast notifications, status bar) | ❌ (no TUI) |
-| Permission system | ✅ (Pi’s dynamic permissions) | ❌ (harnesses use `--dangerously-skip-permissions` or equivalent) |
-| `pi.sendUserMessage` | ✅ (mid-task message injection) | ❌ (runners use CLI invocations) |
-| Daemon protocol | Agent protocol (next-work/claim/release) | Same |
-| Workflow model | Simplified claim/release (daemon manages transitions) | Same |
-| State storage | Daemon | Same daemon |
-| Role filtering | Leader/Teammate/Assistant | Same |
-
-Both are first-class clients of the daemon. A team can mix Pi agents and mpt agents freely — they share the same task queue, stories, comments, and memory notes. The differences are purely in the integration surface, not the capabilities.
+All are first-class clients of the same daemon. A team can mix harnesses freely — they share tasks, comments, memory, and the spawn request queue.
